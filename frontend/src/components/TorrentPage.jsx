@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { torrentAPI, WebSocketClient } from '../services/api';
+import './TorrentPage.css';
 
 const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B';
+  if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -10,43 +11,41 @@ const formatBytes = (bytes) => {
 };
 
 const formatSpeed = (bytesPerSec) => {
+  if (!bytesPerSec) return '0 B/s';
   return formatBytes(bytesPerSec) + '/s';
 };
 
 const formatTime = (seconds) => {
-  if (!seconds || seconds < 0) return 'N/A';
+  if (!seconds || seconds < 0) return '--';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
-  return `${h}h ${m}m ${s}s`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '--';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 // Build tree structure from flat file list
 const buildFileTree = (files) => {
   const root = { name: 'root', children: {}, files: [], isFolder: true };
-
   files.forEach(file => {
     const parts = file.path.split('/');
     let current = root;
-
-    // Navigate through folders
     for (let i = 0; i < parts.length - 1; i++) {
       const folderName = parts[i];
       if (!current.children[folderName]) {
-        current.children[folderName] = {
-          name: folderName,
-          children: {},
-          files: [],
-          isFolder: true,
-        };
+        current.children[folderName] = { name: folderName, children: {}, files: [], isFolder: true };
       }
       current = current.children[folderName];
     }
-
-    // Add file to current folder
     current.files.push(file);
   });
-
   return root;
 };
 
@@ -54,49 +53,25 @@ const buildFileTree = (files) => {
 function FolderTree({ node, selectedFiles, toggleFileSelection, level = 0 }) {
   const [expanded, setExpanded] = useState(level === 0);
 
-  const hasChildren = Object.keys(node.children).length > 0 || node.files.length > 0;
-
   return (
-    <div style={{ marginLeft: level * 20 + 'px' }}>
+    <div style={{ marginLeft: level * 16 + 'px' }}>
       {level > 0 && (
-        <div
-          onClick={() => setExpanded(!expanded)}
-          style={{
-            cursor: 'pointer',
-            padding: '4px 0',
-            fontWeight: 'bold',
-            color: '#2196F3',
-          }}
-        >
-          {expanded ? '📂' : '📁'} {node.name}
+        <div onClick={() => setExpanded(!expanded)} className="folder-item">
+          <span className="folder-icon">{expanded ? '📂' : '📁'}</span>
+          <span className="folder-name">{node.name}</span>
         </div>
       )}
-
       {expanded && (
         <>
-          {/* Render subfolders */}
           {Object.values(node.children).map((child, idx) => (
-            <FolderTree
-              key={idx}
-              node={child}
-              selectedFiles={selectedFiles}
-              toggleFileSelection={toggleFileSelection}
-              level={level + 1}
-            />
+            <FolderTree key={idx} node={child} selectedFiles={selectedFiles} toggleFileSelection={toggleFileSelection} level={level + 1} />
           ))}
-
-          {/* Render files */}
           {node.files.map(file => (
-            <div key={file.index} style={{ marginBottom: '4px', marginLeft: (level + 1) * 20 + 'px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={selectedFiles.has(file.index)}
-                  onChange={() => toggleFileSelection(file.index)}
-                  style={{ marginRight: '8px' }}
-                />
-                <span style={{ flex: 1, fontSize: '14px' }}>📄 {file.path.split('/').pop()}</span>
-                <span style={{ color: '#666', fontSize: '13px' }}>{formatBytes(file.size)}</span>
+            <div key={file.index} className="file-item" style={{ marginLeft: (level + 1) * 16 + 'px' }}>
+              <label className="file-label">
+                <input type="checkbox" checked={selectedFiles.has(file.index)} onChange={() => toggleFileSelection(file.index)} />
+                <span className="file-name">📄 {file.path.split('/').pop()}</span>
+                <span className="file-size">{formatBytes(file.size)}</span>
               </label>
             </div>
           ))}
@@ -106,53 +81,99 @@ function FolderTree({ node, selectedFiles, toggleFileSelection, level = 0 }) {
   );
 }
 
+// Confirmation Modal
+function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }) {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <h3>{title}</h3>
+        <p>{message}</p>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-danger" onClick={onConfirm}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Server Stats Banner
+function ServerStats({ stats }) {
+  return (
+    <div className="server-stats">
+      <div className="stat-item">
+        <span className="stat-icon">⬇️</span>
+        <span className="stat-value download">{formatSpeed(stats.total_download_rate)}</span>
+      </div>
+      <div className="stat-item">
+        <span className="stat-icon">⬆️</span>
+        <span className="stat-value upload">{formatSpeed(stats.total_upload_rate)}</span>
+      </div>
+      <div className="stat-item">
+        <span className="stat-label">Active:</span>
+        <span className="stat-value">{stats.active_torrents || 0}</span>
+      </div>
+      <div className="stat-item">
+        <span className="stat-label">Peers:</span>
+        <span className="stat-value">{stats.total_peers || 0}</span>
+      </div>
+      <div className="stat-item">
+        <span className="stat-label">Seeds:</span>
+        <span className="stat-value">{stats.total_seeds || 0}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function TorrentPage() {
   const [magnetUrl, setMagnetUrl] = useState('');
   const [metadata, setMetadata] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState({});
   const [error, setError] = useState('');
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [torrents, setTorrents] = useState([]);
   const [progressMap, setProgressMap] = useState({});
+  const [serverStats, setServerStats] = useState({});
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, torrentId: null, torrentName: '' });
+  const [showAddForm, setShowAddForm] = useState(false);
 
-  useEffect(() => {
-    loadTorrents();
-
-    // Setup WebSocket for real-time updates
-    const ws = new WebSocketClient((message) => {
-      if (message.type === 'progress') {
-        setProgressMap(prev => ({
-          ...prev,
-          [message.torrent_id]: message.data,
-        }));
-      }
-    });
-    ws.connect();
-
-    // Auto-refresh torrents list
-    const interval = setInterval(loadTorrents, 5000);
-
-    return () => {
-      ws.disconnect();
-      clearInterval(interval);
-    };
-  }, []);
-
-  const loadTorrents = async () => {
+  const loadTorrents = useCallback(async () => {
     try {
       const data = await torrentAPI.listTorrents();
       setTorrents(data);
     } catch (err) {
       console.error('Error loading torrents:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadTorrents();
+
+    const ws = new WebSocketClient((message) => {
+      if (message.type === 'progress') {
+        setProgressMap(prev => ({ ...prev, [message.torrent_id]: message.data }));
+      } else if (message.type === 'stats') {
+        setServerStats(message.data);
+      }
+    });
+    ws.connect();
+
+    const interval = setInterval(loadTorrents, 5000);
+
+    return () => {
+      ws.disconnect();
+      clearInterval(interval);
+    };
+  }, [loadTorrents]);
 
   const handleFetchMetadata = async () => {
     if (!magnetUrl.trim()) {
       setError('Please enter a magnet URL');
       return;
     }
-
     setLoading(true);
     setError('');
     setMetadata(null);
@@ -160,7 +181,6 @@ export default function TorrentPage() {
     try {
       const data = await torrentAPI.fetchMetadata(magnetUrl);
       setMetadata(data);
-      // Select all files by default
       setSelectedFiles(new Set(data.files.map(f => f.index)));
     } catch (err) {
       setError(err.message);
@@ -171,29 +191,67 @@ export default function TorrentPage() {
 
   const handleStartDownload = async () => {
     if (!metadata) return;
-
     setLoading(true);
     setError('');
 
     try {
-      // Add torrent first
       const torrent = await torrentAPI.addTorrent(magnetUrl);
-
-      // Start download with selected files
-      await torrentAPI.startDownload(
-        torrent.id,
-        selectedFiles.size > 0 ? Array.from(selectedFiles) : null
-      );
-
+      await torrentAPI.startDownload(torrent.id, selectedFiles.size > 0 ? Array.from(selectedFiles) : null);
       setMetadata(null);
       setMagnetUrl('');
       setSelectedFiles(new Set());
+      setShowAddForm(false);
       await loadTorrents();
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePause = async (torrentId) => {
+    setActionLoading(prev => ({ ...prev, [torrentId]: 'pause' }));
+    try {
+      await torrentAPI.pauseTorrent(torrentId);
+      await loadTorrents();
+    } catch (err) {
+      console.error('Error pausing:', err);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [torrentId]: null }));
+    }
+  };
+
+  const handleResume = async (torrentId) => {
+    setActionLoading(prev => ({ ...prev, [torrentId]: 'resume' }));
+    try {
+      await torrentAPI.resumeTorrent(torrentId);
+      await loadTorrents();
+    } catch (err) {
+      console.error('Error resuming:', err);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [torrentId]: null }));
+    }
+  };
+
+  const handleDelete = async (confirmed = false) => {
+    if (!confirmed) return;
+    
+    const { torrentId } = deleteModal;
+    setActionLoading(prev => ({ ...prev, [torrentId]: 'delete' }));
+    setDeleteModal({ isOpen: false, torrentId: null, torrentName: '' });
+    
+    try {
+      await torrentAPI.deleteTorrent(torrentId, true);
+      await loadTorrents();
+    } catch (err) {
+      console.error('Error deleting:', err);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [torrentId]: null }));
+    }
+  };
+
+  const openDeleteModal = (torrentId, torrentName) => {
+    setDeleteModal({ isOpen: true, torrentId, torrentName });
   };
 
   const toggleFileSelection = (index) => {
@@ -206,293 +264,206 @@ export default function TorrentPage() {
     setSelectedFiles(newSelection);
   };
 
-  const selectAll = () => {
-    setSelectedFiles(new Set(metadata.files.map(f => f.index)));
-  };
-
-  const deselectAll = () => {
-    setSelectedFiles(new Set());
-  };
+  const selectAll = () => setSelectedFiles(new Set(metadata.files.map(f => f.index)));
+  const deselectAll = () => setSelectedFiles(new Set());
 
   const fileTree = metadata ? buildFileTree(metadata.files) : null;
 
+  const getStateClass = (state) => {
+    const stateMap = {
+      downloading: 'state-downloading',
+      uploading: 'state-uploading',
+      completed: 'state-completed',
+      uploaded: 'state-completed',
+      paused: 'state-paused',
+      error: 'state-error',
+      metadata_ready: 'state-pending',
+      fetching_metadata: 'state-pending',
+    };
+    return stateMap[state] || 'state-pending';
+  };
+
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>Torrent Downloader</h1>
+    <div className="torrent-page">
+      <ServerStats stats={serverStats} />
 
-      {/* Add Torrent Section */}
-      <div style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: 'white' }}>
-        <h2>Add Torrent</h2>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-          <input
-            type="text"
-            placeholder="Paste magnet URL here..."
-            value={magnetUrl}
-            onChange={(e) => setMagnetUrl(e.target.value)}
-            style={{ flex: 1, padding: '10px', fontSize: '14px', border: '1px solid #ddd', borderRadius: '4px' }}
-          />
-          <button
-            onClick={handleFetchMetadata}
-            disabled={loading}
-            style={{
-              padding: '10px 20px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              backgroundColor: loading ? '#ccc' : '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              fontWeight: 'bold',
-            }}
-          >
-            {loading ? 'Fetching...' : 'Fetch Metadata'}
-          </button>
-        </div>
+      <div className="page-header">
+        <h1>Torrents</h1>
+        <button className="btn btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
+          {showAddForm ? '✕ Close' : '+ Add Torrent'}
+        </button>
+      </div>
 
-        {error && (
-          <div style={{
-            color: 'white',
-            backgroundColor: '#f44336',
-            padding: '10px',
-            borderRadius: '4px',
-            marginTop: '10px',
-          }}>
-            {error}
+      {/* Add Torrent Form */}
+      {showAddForm && (
+        <div className="glass-card add-torrent-section">
+          <div className="input-group">
+            <input
+              type="text"
+              placeholder="Paste magnet URL here..."
+              value={magnetUrl}
+              onChange={(e) => setMagnetUrl(e.target.value)}
+              className="input-field"
+            />
+            <button onClick={handleFetchMetadata} disabled={loading} className="btn btn-primary">
+              {loading ? '⏳' : '🔍'} Fetch
+            </button>
           </div>
-        )}
 
-        {/* Metadata Display */}
-        {metadata && (
-          <div style={{ marginTop: '20px' }}>
-            <h3 style={{ color: '#2196F3' }}>{metadata.name}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
-              <p><strong>Total Size:</strong> {formatBytes(metadata.total_size)}</p>
-              <p><strong>Files:</strong> {metadata.num_files}</p>
-              <p style={{ gridColumn: '1 / -1', fontSize: '12px', color: '#666' }}>
-                <strong>Info Hash:</strong> {metadata.info_hash}
-              </p>
-            </div>
+          {error && <div className="error-message">{error}</div>}
 
-            <div style={{ marginTop: '15px' }}>
-              <div style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={selectAll}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#4CAF50',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Select All
-                </button>
-                <button
-                  onClick={deselectAll}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#ff9800',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Deselect All
-                </button>
-                <span style={{ marginLeft: 'auto', alignSelf: 'center', color: '#666' }}>
-                  {selectedFiles.size} / {metadata.num_files} files selected
-                </span>
+          {metadata && (
+            <div className="metadata-section">
+              <div className="metadata-header">
+                <h3>{metadata.name}</h3>
+                <span className="metadata-info">{formatBytes(metadata.total_size)} • {metadata.num_files} files</span>
               </div>
 
-              <div style={{
-                maxHeight: '400px',
-                overflow: 'auto',
-                border: '1px solid #ddd',
-                padding: '10px',
-                borderRadius: '4px',
-                backgroundColor: '#f9f9f9',
-              }}>
+              <div className="file-selection-controls">
+                <button onClick={selectAll} className="btn btn-small btn-secondary">Select All</button>
+                <button onClick={deselectAll} className="btn btn-small btn-secondary">Deselect All</button>
+                <span className="selection-count">{selectedFiles.size} / {metadata.num_files} selected</span>
+              </div>
+
+              <div className="file-tree-container">
                 {fileTree && (
-                  <FolderTree
-                    node={fileTree}
-                    selectedFiles={selectedFiles}
-                    toggleFileSelection={toggleFileSelection}
-                  />
+                  <FolderTree node={fileTree} selectedFiles={selectedFiles} toggleFileSelection={toggleFileSelection} />
                 )}
               </div>
 
               <button
                 onClick={handleStartDownload}
                 disabled={selectedFiles.size === 0 || loading}
-                style={{
-                  marginTop: '15px',
-                  padding: '12px 24px',
-                  cursor: (selectedFiles.size === 0 || loading) ? 'not-allowed' : 'pointer',
-                  backgroundColor: (selectedFiles.size === 0 || loading) ? '#ccc' : '#4CAF50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  fontSize: '16px',
-                  width: '100%',
-                }}
+                className="btn btn-success btn-full"
               >
-                Start Download ({selectedFiles.size} files selected)
+                ⬇️ Start Download ({selectedFiles.size} files)
               </button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      {/* Active Torrents */}
-      <div>
-        <h2>Active Torrents</h2>
+      {/* Torrent Table */}
+      <div className="glass-card torrent-table-container">
         {torrents.length === 0 ? (
-          <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>
-            No torrents yet. Add one above to get started.
-          </p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {torrents.map(torrent => {
-              const progress = progressMap[torrent.id] || torrent.progress || { progress: 0 };
-              const isDownloading = torrent.state === 'downloading';
-              const isUploading = torrent.state === 'uploading';
-              const isCompleted = torrent.state === 'completed' || torrent.state === 'uploaded';
-              const isError = torrent.state === 'error';
-
-              return (
-                <div
-                  key={torrent.id}
-                  style={{
-                    border: '1px solid #ddd',
-                    padding: '20px',
-                    borderRadius: '8px',
-                    backgroundColor: 'white',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' }}>
-                    <h3 style={{ marginTop: 0, flex: 1 }}>{torrent.metadata?.name || 'Loading...'}</h3>
-                    <span
-                      style={{
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        backgroundColor: isError ? '#f44336' : isCompleted ? '#4CAF50' : isUploading ? '#2196F3' : '#ff9800',
-                        color: 'white',
-                      }}
-                    >
-                      {torrent.state.replace('_', ' ').toUpperCase()}
-                    </span>
-                  </div>
-
-                  {isDownloading && (
-                    <>
-                      <div style={{ marginBottom: '15px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                          <span style={{ fontWeight: 'bold' }}>
-                            Progress: {progress.progress?.toFixed(2)}%
-                          </span>
-                          <span>
-                            {formatBytes(progress.downloaded)} / {formatBytes(progress.total_size)}
-                          </span>
-                        </div>
-
-                        <div style={{
-                          width: '100%',
-                          height: '24px',
-                          backgroundColor: '#e0e0e0',
-                          borderRadius: '12px',
-                          overflow: 'hidden',
-                          position: 'relative',
-                        }}>
-                          <div
-                            style={{
-                              width: `${progress.progress}%`,
-                              height: '100%',
-                              backgroundColor: '#4CAF50',
-                              transition: 'width 0.3s ease',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          />
-                          <span style={{
-                            position: 'absolute',
-                            top: '50%',
-                            left: '50%',
-                            transform: 'translate(-50%, -50%)',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            color: progress.progress > 50 ? 'white' : '#333',
-                          }}>
-                            {progress.progress?.toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                        gap: '12px',
-                        fontSize: '14px',
-                        padding: '12px',
-                        backgroundColor: '#f5f5f5',
-                        borderRadius: '6px',
-                      }}>
-                        <div>
-                          <div style={{ color: '#666', fontSize: '12px' }}>Download Speed</div>
-                          <div style={{ fontWeight: 'bold', color: '#4CAF50' }}>
-                            ⬇ {formatSpeed(progress.download_rate)}
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ color: '#666', fontSize: '12px' }}>Upload Speed</div>
-                          <div style={{ fontWeight: 'bold', color: '#2196F3' }}>
-                            ⬆ {formatSpeed(progress.upload_rate)}
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ color: '#666', fontSize: '12px' }}>Peers</div>
-                          <div style={{ fontWeight: 'bold' }}>👥 {progress.num_peers}</div>
-                        </div>
-                        <div>
-                          <div style={{ color: '#666', fontSize: '12px' }}>Seeds</div>
-                          <div style={{ fontWeight: 'bold' }}>🌱 {progress.num_seeds}</div>
-                        </div>
-                        <div>
-                          <div style={{ color: '#666', fontSize: '12px' }}>ETA</div>
-                          <div style={{ fontWeight: 'bold' }}>⏱ {formatTime(progress.eta)}</div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {isUploading && (
-                    <div style={{ color: '#2196F3', fontWeight: 'bold', padding: '10px', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
-                      ☁️ Uploading to Google Drive...
-                    </div>
-                  )}
-
-                  {isCompleted && (
-                    <div style={{ color: '#4CAF50', fontWeight: 'bold', padding: '10px', backgroundColor: '#e8f5e9', borderRadius: '4px' }}>
-                      ✓ {torrent.state === 'uploaded' ? 'Uploaded to Google Drive' : 'Download completed'}
-                    </div>
-                  )}
-
-                  {isError && (
-                    <div style={{ color: '#f44336', padding: '10px', backgroundColor: '#ffebee', borderRadius: '4px' }}>
-                      ✗ Error: {progress.error || 'Unknown error occurred'}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="empty-state">
+            <span className="empty-icon">📥</span>
+            <p>No torrents yet. Add one to get started.</p>
           </div>
+        ) : (
+          <table className="torrent-table">
+            <thead>
+              <tr>
+                <th className="col-name">Name</th>
+                <th className="col-size">Size</th>
+                <th className="col-progress">Progress</th>
+                <th className="col-speed">↓ Speed</th>
+                <th className="col-speed">↑ Speed</th>
+                <th className="col-peers">Peers</th>
+                <th className="col-eta">ETA</th>
+                <th className="col-date">Added</th>
+                <th className="col-status">Status</th>
+                <th className="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {torrents.map(torrent => {
+                const progress = progressMap[torrent.id] || torrent.progress || {};
+                const isDownloading = torrent.state === 'downloading';
+                const isPaused = torrent.state === 'paused';
+                const isCompleted = torrent.state === 'completed' || torrent.state === 'uploaded';
+                const progressPercent = progress.progress || 0;
+                const isLoading = actionLoading[torrent.id];
+
+                return (
+                  <tr key={torrent.id} className={getStateClass(torrent.state)}>
+                    <td className="col-name">
+                      <div className="torrent-name" title={torrent.metadata?.name}>
+                        {torrent.metadata?.name || 'Loading...'}
+                      </div>
+                      {progress.error && <div className="torrent-error">{progress.error}</div>}
+                    </td>
+                    <td className="col-size">{formatBytes(torrent.metadata?.total_size)}</td>
+                    <td className="col-progress">
+                      <div className="progress-cell">
+                        <div className="progress-bar">
+                          <div 
+                            className="progress-fill" 
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                        <span className="progress-text">{progressPercent.toFixed(1)}%</span>
+                      </div>
+                    </td>
+                    <td className="col-speed download">{isDownloading ? formatSpeed(progress.download_rate) : '--'}</td>
+                    <td className="col-speed upload">{isDownloading ? formatSpeed(progress.upload_rate) : '--'}</td>
+                    <td className="col-peers">
+                      {isDownloading ? `${progress.num_peers || 0}/${progress.num_seeds || 0}` : '--'}
+                    </td>
+                    <td className="col-eta">{isDownloading ? formatTime(progress.eta) : '--'}</td>
+                    <td className="col-date">{formatDate(torrent.created_at)}</td>
+                    <td className="col-status">
+                      <span className={`status-badge ${getStateClass(torrent.state)}`}>
+                        {torrent.state.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="col-actions">
+                      <div className="action-buttons">
+                        {isDownloading && (
+                          <button
+                            onClick={() => handlePause(torrent.id)}
+                            disabled={isLoading}
+                            className="btn-icon btn-pause"
+                            title="Pause"
+                          >
+                            {isLoading === 'pause' ? '⏳' : '⏸️'}
+                          </button>
+                        )}
+                        {isPaused && (
+                          <button
+                            onClick={() => handleResume(torrent.id)}
+                            disabled={isLoading}
+                            className="btn-icon btn-resume"
+                            title="Resume"
+                          >
+                            {isLoading === 'resume' ? '⏳' : '▶️'}
+                          </button>
+                        )}
+                        {!isDownloading && torrent.state === 'metadata_ready' && (
+                          <button
+                            onClick={() => handleResume(torrent.id)}
+                            disabled={isLoading}
+                            className="btn-icon btn-resume"
+                            title="Start"
+                          >
+                            {isLoading === 'resume' ? '⏳' : '▶️'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openDeleteModal(torrent.id, torrent.metadata?.name)}
+                          disabled={isLoading}
+                          className="btn-icon btn-delete"
+                          title="Delete"
+                        >
+                          {isLoading === 'delete' ? '⏳' : '🗑️'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        title="Delete Torrent"
+        message={`Are you sure you want to delete "${deleteModal.torrentName}"? This will also remove downloaded files.`}
+        onConfirm={() => handleDelete(true)}
+        onCancel={() => setDeleteModal({ isOpen: false, torrentId: null, torrentName: '' })}
+      />
     </div>
   );
 }

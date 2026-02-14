@@ -7,36 +7,60 @@ function Navigation() {
 
   const navStyle = {
     display: 'flex',
+    alignItems: 'center',
     gap: '0',
-    backgroundColor: '#2c3e50',
-    padding: '0',
+    background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.8))',
+    backdropFilter: 'blur(20px)',
+    padding: '0 20px',
     margin: 0,
     listStyle: 'none',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+  };
+
+  const logoStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '15px 20px 15px 0',
+    marginRight: '20px',
+    borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+  };
+
+  const logoText = {
+    fontSize: '18px',
+    fontWeight: '700',
+    background: 'linear-gradient(135deg, #2dd4bf, #14b8a6)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
   };
 
   const linkStyle = (isActive) => ({
-    padding: '15px 30px',
-    color: 'white',
+    padding: '18px 24px',
+    color: isActive ? '#2dd4bf' : 'rgba(255, 255, 255, 0.7)',
     textDecoration: 'none',
-    backgroundColor: isActive ? '#34495e' : 'transparent',
-    borderBottom: isActive ? '3px solid #3498db' : '3px solid transparent',
-    transition: 'all 0.3s',
+    fontSize: '14px',
+    fontWeight: '500',
+    borderBottom: isActive ? '2px solid #2dd4bf' : '2px solid transparent',
+    transition: 'all 0.2s',
+    marginBottom: '-1px',
   });
 
   return (
-    <nav>
-      <ul style={navStyle}>
-        <li>
-          <Link to="/" style={linkStyle(location.pathname === '/')}>
-            Torrents
-          </Link>
-        </li>
-        <li>
-          <Link to="/storage" style={linkStyle(location.pathname === '/storage')}>
-            Storage
-          </Link>
-        </li>
-      </ul>
+    <nav style={navStyle}>
+      <div style={logoStyle}>
+        <span style={{ fontSize: '24px' }}>⚡</span>
+        <span style={logoText}>Torrent-to-Drive</span>
+      </div>
+      <Link to="/" style={linkStyle(location.pathname === '/')}>
+        📥 Torrents
+      </Link>
+      <Link to="/storage" style={linkStyle(location.pathname === '/storage')}>
+        ☁️ Storage
+      </Link>
     </nav>
   );
 }
@@ -44,7 +68,7 @@ function Navigation() {
 function App() {
   return (
     <Router>
-      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div style={{ minHeight: '100vh' }}>
         <Navigation />
         <Routes>
           <Route path="/" element={<TorrentPage />} />

@@ -193,17 +193,20 @@ async def pause_torrent(torrent_id: str):
     try:
         db = await get_db()
         engine = await get_engine()
+        worker = await get_torrent_worker()
 
         torrent = await db.get_torrent(torrent_id)
         if not torrent:
             raise HTTPException(status_code=404, detail="Torrent not found")
 
-        success = await engine.pause_torrent(torrent_id)
-        if success:
-            await db.update_torrent(torrent_id, state=TorrentState.PAUSED)
-            return {"status": "paused"}
-
-        raise HTTPException(status_code=400, detail="Failed to pause torrent")
+        # Signal worker to pause (this will stop the download task)
+        await worker.pause_download(torrent_id)
+        
+        # Also pause in engine
+        await engine.pause_torrent(torrent_id)
+        
+        await db.update_torrent(torrent_id, state=TorrentState.PAUSED)
+        return {"status": "paused"}
 
     except HTTPException:
         raise
@@ -220,17 +223,24 @@ async def resume_torrent(torrent_id: str):
     try:
         db = await get_db()
         engine = await get_engine()
+        worker = await get_torrent_worker()
 
         torrent = await db.get_torrent(torrent_id)
         if not torrent:
             raise HTTPException(status_code=404, detail="Torrent not found")
 
-        success = await engine.resume_torrent(torrent_id)
-        if success:
+        # Try to resume in engine first (if handle exists)
+        engine_resumed = await engine.resume_torrent(torrent_id)
+        
+        if engine_resumed:
+            # Handle exists in engine, just resume it
             await db.update_torrent(torrent_id, state=TorrentState.DOWNLOADING)
             return {"status": "resumed"}
-
-        raise HTTPException(status_code=400, detail="Failed to resume torrent")
+        else:
+            # Need to re-queue in worker
+            await worker.resume_download(torrent_id)
+            await db.update_torrent(torrent_id, state=TorrentState.DOWNLOADING)
+            return {"status": "requeued"}
 
     except HTTPException:
         raise
@@ -247,11 +257,15 @@ async def delete_torrent(torrent_id: str, delete_files: bool = False):
     try:
         db = await get_db()
         engine = await get_engine()
+        worker = await get_torrent_worker()
 
         torrent = await db.get_torrent(torrent_id)
         if not torrent:
             raise HTTPException(status_code=404, detail="Torrent not found")
 
+        # Cancel if actively downloading
+        await worker.cancel_download(torrent_id)
+        
         # Remove from engine if active
         await engine.remove_torrent(torrent_id, delete_files=delete_files)
 

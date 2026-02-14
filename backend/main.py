@@ -58,12 +58,23 @@ manager = ConnectionManager()
 
 # Progress broadcaster task
 async def broadcast_progress():
-    """Periodically broadcast torrent progress to all connected clients"""
+    """Periodically broadcast torrent progress and server stats to all connected clients"""
     db = await get_db()
     engine = await get_engine()
+    worker = await get_torrent_worker()
 
     while True:
         try:
+            # Get session stats
+            stats = await engine.get_session_stats()
+            stats["queued_torrents"] = worker.get_queue_size()
+            
+            # Broadcast server stats
+            await manager.broadcast({
+                "type": "stats",
+                "data": stats,
+            })
+
             # Get all active torrents
             active_states = [
                 TorrentState.DOWNLOADING,
@@ -84,7 +95,7 @@ async def broadcast_progress():
                                 "data": progress.dict(),
                             })
 
-            await asyncio.sleep(2)  # Broadcast every 2 seconds
+            await asyncio.sleep(1)  # Broadcast every 1 second for smoother updates
 
         except Exception as e:
             logger.error(f"Error in progress broadcaster: {e}", exc_info=True)
@@ -174,6 +185,19 @@ async def health_check():
         "status": "healthy",
         "service": "torrent-to-drive",
     }
+
+
+# Server stats endpoint
+@app.get("/api/stats")
+async def get_stats():
+    """Get server-wide statistics including download/upload speeds"""
+    engine = await get_engine()
+    worker = await get_torrent_worker()
+    
+    stats = await engine.get_session_stats()
+    stats["queued_torrents"] = worker.get_queue_size()
+    
+    return stats
 
 
 # Serve frontend (if built)

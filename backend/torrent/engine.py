@@ -155,6 +155,7 @@ class TorrentEngine:
         torrent_id: str,
         magnet_url: str,
         file_indices: Optional[List[int]] = None,
+        timeout: int = 120,
     ) -> str:
         """
         Add torrent for downloading
@@ -176,8 +177,12 @@ class TorrentEngine:
         # Add torrent
         handle = self.session.add_torrent(params)
 
-        # Wait for metadata
+        # Wait for metadata with timeout
+        start_time = asyncio.get_event_loop().time()
         while not handle.has_metadata():
+            if asyncio.get_event_loop().time() - start_time > timeout:
+                self.session.remove_torrent(handle)
+                raise TimeoutError(f"Metadata fetch timed out after {timeout}s")
             await asyncio.sleep(0.1)
 
         # Set file priorities (0 = don't download, 4 = normal)
@@ -276,6 +281,42 @@ class TorrentEngine:
         if handle and handle.is_valid():
             return Path(handle.status().save_path)
         return Path(settings.torrent.download_path) / torrent_id
+
+    async def get_session_stats(self) -> dict:
+        """Get aggregate session statistics"""
+        if not self.session:
+            return {
+                "total_download_rate": 0,
+                "total_upload_rate": 0,
+                "active_torrents": 0,
+                "total_peers": 0,
+                "total_seeds": 0,
+            }
+        
+        total_download = 0
+        total_upload = 0
+        total_peers = 0
+        total_seeds = 0
+        active_count = 0
+        
+        for handle in self.handles.values():
+            if handle.is_valid():
+                status = handle.status()
+                if not status.paused:
+                    total_download += status.download_rate
+                    total_upload += status.upload_rate
+                    total_peers += status.num_peers
+                    total_seeds += status.num_seeds
+                    if status.state in [lt.torrent_status.downloading, lt.torrent_status.downloading_metadata]:
+                        active_count += 1
+        
+        return {
+            "total_download_rate": total_download,
+            "total_upload_rate": total_upload,
+            "active_torrents": active_count,
+            "total_peers": total_peers,
+            "total_seeds": total_seeds,
+        }
 
 
 # Global engine instance

@@ -1,0 +1,21 @@
+# Stop current process (Ctrl+C if running)
+git pull origin main
+
+# Create logs directory
+mkdir -p logs
+
+# Start with PM2
+pm2 start ecosystem.config.js
+
+# Save PM2 process list (survives reboots)
+pm2 save
+
+# Enable PM2 startup on boot
+pm2 startup
+# Run the command it outputs
+
+# Useful commands:
+pm2 logs torrent-to-drive    # View logs
+pm2 status                   # Check status
+pm2 restart torrent-to-drive # Restart
+pm2 stop torrent-to-drive    # Stop

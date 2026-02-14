@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { storageAPI } from '../services/api';
+import './StoragePage.css';
 
 const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B';
+  if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -10,7 +11,20 @@ const formatBytes = (bytes) => {
 };
 
 const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleString();
+  if (!dateString) return '--';
+  const date = new Date(dateString);
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const getFileIcon = (file) => {
+  if (file.is_folder) return '📁';
+  const mimeType = file.mime_type || '';
+  if (mimeType.startsWith('video/')) return '🎬';
+  if (mimeType.startsWith('audio/')) return '🎵';
+  if (mimeType.startsWith('image/')) return '🖼️';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) return '📦';
+  if (mimeType.includes('pdf')) return '📕';
+  return '📄';
 };
 
 export default function StoragePage() {
@@ -44,6 +58,7 @@ export default function StoragePage() {
       setHealth(data);
     } catch (err) {
       console.error('Health check failed:', err);
+      setHealth({ status: 'error' });
     }
   };
 
@@ -58,111 +73,86 @@ export default function StoragePage() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>Google Drive Storage</h1>
-        <div>
+    <div className="storage-page">
+      <div className="page-header">
+        <h1>☁️ Google Drive Storage</h1>
+        <div className="header-actions">
           {health && (
-            <span style={{
-              padding: '5px 10px',
-              borderRadius: '5px',
-              backgroundColor: health.status === 'healthy' ? '#4CAF50' : '#f44336',
-              color: 'white',
-              fontSize: '12px',
-            }}>
-              {health.status === 'healthy' ? '● Connected' : '● Disconnected'}
+            <span className={`health-badge ${health.status === 'healthy' ? 'healthy' : 'error'}`}>
+              <span className="health-dot"></span>
+              {health.status === 'healthy' ? 'Connected' : 'Disconnected'}
             </span>
           )}
-          <button
-            onClick={loadFiles}
-            disabled={loading}
-            style={{ marginLeft: '10px', padding: '8px 16px', cursor: 'pointer' }}
-          >
-            {loading ? 'Loading...' : 'Refresh'}
+          <button onClick={loadFiles} disabled={loading} className="btn btn-secondary">
+            {loading ? '⏳' : '🔄'} Refresh
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={{
-          padding: '15px',
-          backgroundColor: '#ffebee',
-          color: '#c62828',
-          borderRadius: '8px',
-          marginBottom: '20px',
-        }}>
+        <div className="error-message">
           {error}
         </div>
       )}
 
-      {loading && files.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px' }}>
-          <p>Loading files...</p>
-        </div>
-      ) : files.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-          <p>No files uploaded yet.</p>
-          <p>Download torrents from the Torrents page to see them here.</p>
-        </div>
-      ) : (
-        <div>
-          <div style={{ marginBottom: '15px', color: '#666' }}>
-            {files.length} file{files.length !== 1 ? 's' : ''} found
+      <div className="glass-card">
+        {loading && files.length === 0 ? (
+          <div className="loading-state">
+            <div className="spinner"></div>
+            <p>Loading files from Google Drive...</p>
           </div>
+        ) : files.length === 0 ? (
+          <div className="empty-state">
+            <span className="empty-icon">☁️</span>
+            <p>No files uploaded yet.</p>
+            <p className="empty-hint">Download torrents from the Torrents page to see them here.</p>
+          </div>
+        ) : (
+          <>
+            <div className="file-count">
+              {files.length} file{files.length !== 1 ? 's' : ''} in Google Drive
+            </div>
 
-          <div style={{ border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="storage-table">
               <thead>
-                <tr style={{ backgroundColor: '#f5f5f5' }}>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Name</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Type</th>
-                  <th style={{ padding: '12px', textAlign: 'right', borderBottom: '1px solid #ddd' }}>Size</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Created</th>
-                  <th style={{ padding: '12px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Actions</th>
+                <tr>
+                  <th className="col-name">Name</th>
+                  <th className="col-type">Type</th>
+                  <th className="col-size">Size</th>
+                  <th className="col-date">Created</th>
+                  <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {files.map(file => (
-                  <tr key={file.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ marginRight: '8px', fontSize: '20px' }}>
-                          {file.is_folder ? '📁' : '📄'}
-                        </span>
-                        {file.name}
+                  <tr key={file.id}>
+                    <td className="col-name">
+                      <div className="file-name">
+                        <span className="file-icon">{getFileIcon(file)}</span>
+                        <span className="file-text" title={file.name}>{file.name}</span>
                       </div>
                     </td>
-                    <td style={{ padding: '12px', fontSize: '14px', color: '#666' }}>
-                      {file.is_folder ? 'Folder' : file.mime_type.split('/').pop()}
+                    <td className="col-type">
+                      {file.is_folder ? 'Folder' : (file.mime_type || '').split('/').pop().toUpperCase()}
                     </td>
-                    <td style={{ padding: '12px', textAlign: 'right', fontSize: '14px' }}>
+                    <td className="col-size">
                       {!file.is_folder && formatBytes(file.size)}
                     </td>
-                    <td style={{ padding: '12px', fontSize: '14px', color: '#666' }}>
+                    <td className="col-date">
                       {formatDate(file.created_time)}
                     </td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleDownload(file)}
-                        style={{
-                          padding: '6px 12px',
-                          cursor: 'pointer',
-                          backgroundColor: '#2196F3',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        {file.is_folder ? 'Open' : 'Download'}
+                    <td className="col-actions">
+                      <button onClick={() => handleDownload(file)} className="btn btn-small btn-primary">
+                        {file.is_folder ? '📂 Open' : '⬇️ Download'}
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

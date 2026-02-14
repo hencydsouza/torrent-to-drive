@@ -112,6 +112,16 @@ class TorrentAPI {
 
     return response.json();
   }
+
+  async getStats() {
+    const response = await fetch(`${API_BASE}/stats`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch stats');
+    }
+
+    return response.json();
+  }
 }
 
 class StorageAPI {
