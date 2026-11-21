@@ -208,3 +208,17 @@
     flex: 1;
   }
 }
+
+.setting-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.tracker-list {
+  width: 100%;
+  padding: 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-meta);
+  resize: vertical;
+}

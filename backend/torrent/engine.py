@@ -87,6 +87,11 @@ class TorrentEngine:
         self.running = False
         logger.info("Torrent engine stopped")
 
+    def _parse_magnet(self, magnet_url: str):
+        params = lt.parse_magnet_uri(magnet_url)
+        params.trackers = list(dict.fromkeys([*params.trackers, *settings.torrent.extra_trackers]))
+        return params
+
     async def fetch_metadata(self, magnet_url: str, timeout: int = 60) -> TorrentMetadata:
         """
         Fetch torrent metadata from magnet link without downloading
@@ -98,7 +103,7 @@ class TorrentEngine:
         logger.info(f"Fetching metadata for magnet link...")
 
         # Parse magnet link
-        params = lt.parse_magnet_uri(magnet_url)
+        params = self._parse_magnet(magnet_url)
         params.save_path = "/tmp"  # Temporary path, won't download yet
         params.flags = lt.torrent_flags.upload_mode  # Metadata only
 
@@ -178,7 +183,7 @@ class TorrentEngine:
         download_path.mkdir(parents=True, exist_ok=True)
 
         # Parse magnet
-        params = lt.parse_magnet_uri(magnet_url)
+        params = self._parse_magnet(magnet_url)
         params.save_path = str(download_path)
 
         # Add torrent

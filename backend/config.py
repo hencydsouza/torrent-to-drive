@@ -21,6 +21,7 @@ class TorrentConfig(BaseModel):
     max_concurrent_downloads: int = 5
     stream_to_drive: bool = False  # sequential download -> chunked Drive upload -> free local bytes
     stream_buffer_mb: int = 2048  # max torrent bytes kept on disk ahead of the upload cursor
+    extra_trackers: list[str] = []  # appended to every new torrent (like qBittorrent's tracker list)
 
 
 class GoogleDriveConfig(BaseModel):

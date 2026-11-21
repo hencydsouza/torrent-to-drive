@@ -130,6 +130,25 @@ export default function SettingsPage() {
         <NumberRow name="upload_rate_limit" label="Upload speed cap" hint="Seeding speed. 0 means no cap. Streamed torrents never seed." value={draft.upload_rate_limit} onChange={set} />
       </section>
 
+      <section className="settings-section" aria-labelledby="sec-trackers">
+        <h2 id="sec-trackers">Trackers</h2>
+        <div className="setting-row setting-row--stack">
+          <label htmlFor="extra_trackers" className="setting-text">
+            <span className="setting-label">Add these trackers to new torrents</span>
+            <span className="setting-hint">One URL per line (udp://, http://, https://). More trackers find more peers, so slow torrents speed up.</span>
+          </label>
+          <textarea
+            id="extra_trackers"
+            className="input tracker-list"
+            rows={6}
+            spellCheck={false}
+            placeholder="udp://tracker.opentrackr.org:1337/announce"
+            value={(draft.extra_trackers ?? []).join('\n')}
+            onChange={(e) => set('extra_trackers', e.target.value.split('\n'))}
+          />
+        </div>
+      </section>
+
       <section className="settings-section" aria-labelledby="sec-drive">
         <h2 id="sec-drive">Drive upload</h2>
         <NumberRow name="chunk_size" label="Upload chunk size" hint="Rounded down to a multiple of 0.25 MB, as Drive requires. Larger chunks mean fewer requests." value={draft.chunk_size} onChange={set} />

@@ -102,6 +102,7 @@ class AppSettings(BaseModel):
     upload_rate_limit: int
     chunk_size: int
     max_retries: int
+    extra_trackers: List[str] = []
     drive_folder_id: Optional[str] = None
     env_locked: List[str] = []
 

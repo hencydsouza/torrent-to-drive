@@ -323,6 +323,11 @@ export interface components {
             chunk_size: number;
             /** Max Retries */
             max_retries: number;
+            /**
+             * Extra Trackers
+             * @default []
+             */
+            extra_trackers: string[];
             /** Drive Folder Id */
             drive_folder_id?: string | null;
             /**
@@ -435,6 +440,8 @@ export interface components {
             chunk_size?: number | null;
             /** Max Retries */
             max_retries?: number | null;
+            /** Extra Trackers */
+            extra_trackers?: string[] | null;
         };
         /** TorrentDownloadRequest */
         TorrentDownloadRequest: {

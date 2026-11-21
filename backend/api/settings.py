@@ -1,10 +1,11 @@
 import logging
 import os
 from typing import Optional
+from urllib.parse import urlparse
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.config import ENV_OVERRIDES as ENV_KEYS, settings
 from backend.models import AppSettings
@@ -17,7 +18,7 @@ CONFIG_PATH = "./config/settings.yaml"
 # section -> editable keys (everything else in settings.yaml stays file/env-only)
 EDITABLE = {
     "torrent": ["stream_to_drive", "stream_buffer_mb", "max_concurrent_downloads",
-                "max_connections", "download_rate_limit", "upload_rate_limit"],
+                "max_connections", "download_rate_limit", "upload_rate_limit", "extra_trackers"],
     "google_drive": ["chunk_size", "max_retries"],
 }
 
@@ -31,6 +32,18 @@ class SettingsUpdate(BaseModel):
     upload_rate_limit: Optional[int] = Field(None, ge=0)
     chunk_size: Optional[int] = Field(None, ge=256 * 1024, le=1024 * 1024 * 1024)
     max_retries: Optional[int] = Field(None, ge=1, le=20)
+    extra_trackers: Optional[list[str]] = Field(None, max_length=500)
+
+    @field_validator("extra_trackers")
+    @classmethod
+    def _clean_trackers(cls, v):
+        if v is None:
+            return v
+        urls = list(dict.fromkeys(u.strip() for u in v if u.strip()))  # drop blanks, dedupe, keep order
+        bad = [u for u in urls if urlparse(u).scheme not in ("http", "https", "udp", "ws", "wss") or not urlparse(u).netloc]
+        if bad:
+            raise ValueError(f"Not a tracker URL: {bad[0]}")
+        return urls
 
 
 def _current() -> dict:

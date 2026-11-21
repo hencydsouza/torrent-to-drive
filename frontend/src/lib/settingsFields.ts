@@ -39,9 +39,10 @@ export const toView = (api: AppSettings): SettingsDraft =>
 export const toApi = (view: SettingsDraft): SettingsUpdate =>
   Object.fromEntries(
     Object.entries(view)
-      .filter(([k]) => field(k) || k === 'stream_to_drive')
+      .filter(([k]) => field(k) || k === 'stream_to_drive' || k === 'extra_trackers')
       .map(([k, v]) => {
         const f = field(k);
+        if (k === 'extra_trackers') return [k, (v as string[]).map((u) => u.trim()).filter(Boolean)];
         return [k, f ? Math.round(Number(v) * f.scale) : v];
       }),
   ) as SettingsUpdate;
