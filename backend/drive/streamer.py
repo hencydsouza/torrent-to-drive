@@ -140,8 +140,9 @@ class TorrentStreamer:
         self.http = AuthorizedSession(drive.credentials)
         await db.update_torrent(self.torrent_id, state=TorrentState.UPLOADING)
 
-        # Uploaded bytes get freed, so never seed (we'd serve zeros) and fetch in order.
-        self.handle.set_upload_limit(1)  # shortcut: 0 means unlimited in libtorrent, 1 B/s is effectively off
+        # Fetch in order; never unchoke peers: freed (hole-punched) pieces would serve zeros. A 1 B/s upload cap
+        # instead also throttles our outgoing piece requests and drops download ~40x.
+        self.handle.set_max_uploads(0)
         self.handle.set_flags(lt.torrent_flags.sequential_download)
 
         root_id = await drive.get_or_create_folder(self.info.name(),
