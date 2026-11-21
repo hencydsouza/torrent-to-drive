@@ -1,0 +1,210 @@
+/* Settings page layout and its two controls (number field, switch). Colors come from theme.css. */
+
+.settings-page code {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-control);
+  color: var(--text);
+}
+
+.settings-section {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 24px 12px;
+  margin-bottom: 24px;
+}
+
+.settings-section h2 {
+  margin: 16px 0 4px;
+  font-size: var(--font-title);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-section h2 + .setting-row {
+  border-top: none;
+}
+
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 60ch;
+  cursor: default;
+}
+
+.setting-label {
+  font-size: var(--font-body);
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.setting-hint {
+  font-size: var(--font-meta);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Number input with unit suffix */
+.number-field {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 190px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.number-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.number-field input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 0 10px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  caret-color: var(--accent);
+}
+
+.number-field input:disabled,
+.number-field:has(input:disabled) .unit {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.unit {
+  padding: 0 10px;
+  font-size: var(--font-meta);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Switch */
+.toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-control);
+  cursor: pointer;
+  transition: background 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+.toggle.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toggle.on .toggle-thumb { background: var(--on-accent); }
+.toggle.on .toggle-thumb {
+  transform: translateX(20px);
+}
+
+.toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+
+.estimate {
+  margin: 0 0 12px;
+  font-size: var(--font-meta);
+  color: var(--text-muted);
+}
+
+.estimate strong {
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sticky save bar */
+.save-bar[hidden] { display: none; }
+.save-bar {
+  position: sticky;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px 12px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-pop);
+}
+
+.status {
+  margin: 0;
+  font-size: var(--font-meta);
+  color: var(--text-muted);
+}
+
+.status.ok { color: var(--tone-success); }
+.status.error { color: var(--tone-danger); }
+
+.save-actions {
+  display: flex;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .setting-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .setting-row .toggle {
+    align-self: flex-start;
+  }
+
+  .number-field {
+    width: 100%;
+  }
+
+  .save-bar[hidden] { display: none; }
+.save-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .save-actions .btn {
+    flex: 1;
+  }
+}

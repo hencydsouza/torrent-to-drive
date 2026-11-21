@@ -12,8 +12,8 @@ from backend.config import settings
 from backend.database import get_db
 from backend.torrent import get_engine, get_torrent_worker
 from backend.drive import get_upload_worker
-from backend.api import torrents_router, storage_router
-from backend.models import TorrentState
+from backend.api import torrents_router, storage_router, settings_router
+from backend.models import TorrentState, ServerStats
 
 # Configure logging
 logging.basicConfig(
@@ -164,6 +164,7 @@ app.add_middleware(
 # Include API routers
 app.include_router(torrents_router)
 app.include_router(storage_router)
+app.include_router(settings_router)
 
 
 # WebSocket endpoint for real-time updates
@@ -188,7 +189,7 @@ async def health_check():
 
 
 # Server stats endpoint
-@app.get("/api/stats")
+@app.get("/api/stats", response_model=ServerStats)
 async def get_stats():
     """Get server-wide statistics including download/upload speeds"""
     engine = await get_engine()

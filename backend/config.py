@@ -19,6 +19,8 @@ class TorrentConfig(BaseModel):
     upload_rate_limit: int = 0
     download_rate_limit: int = 0
     max_concurrent_downloads: int = 5
+    stream_to_drive: bool = False  # sequential download -> chunked Drive upload -> free local bytes
+    stream_buffer_mb: int = 2048  # max torrent bytes kept on disk ahead of the upload cursor
 
 
 class GoogleDriveConfig(BaseModel):
@@ -36,6 +38,10 @@ class DatabaseConfig(BaseModel):
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+
+# torrent.<key> -> env var that overrides it (settings API refuses to edit these while set)
+ENV_OVERRIDES = {"stream_to_drive": "STREAM_TO_DRIVE", "stream_buffer_mb": "STREAM_BUFFER_MB"}
 
 
 class Settings(BaseModel):
@@ -57,6 +63,10 @@ class Settings(BaseModel):
         # Environment variable overrides
         if folder_id := os.getenv("DRIVE_FOLDER_ID"):
             data.setdefault("google_drive", {})["shared_folder_id"] = folder_id
+
+        for key, env in ENV_OVERRIDES.items():
+            if (raw := os.getenv(env)) is not None:
+                data.setdefault("torrent", {})[key] = raw.lower() in ("1", "true", "yes") if key == "stream_to_drive" else int(raw)
 
         return cls(**data)
 

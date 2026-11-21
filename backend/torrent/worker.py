@@ -192,6 +192,11 @@ class TorrentWorker:
             # Add to engine
             await engine.add_torrent(torrent_id, download.magnet_url, download.file_indices)
 
+            if settings.torrent.stream_to_drive:
+                from backend.drive.streamer import stream_torrent
+                await stream_torrent(torrent_id, download.file_indices, download.cancel_event)
+                return
+
             # Wait for completion with cancellation check
             while not engine.is_completed(torrent_id):
                 # Check for cancellation

@@ -1,14 +1,24 @@
-version: '3.8'
-
 services:
   torrent-to-drive:
     build: .
+    container_name: torrent-to-drive
     ports:
       - "8000:8000"
     volumes:
+      # Mount config for credentials
+      - ./config:/app/config:rw
+      # Mount data directory (downloads cleaned after upload)
       - ./data:/app/data
-      - ./config:/app/config
-      - ./backend:/app/backend
+      # Optional: limit disk usage
+      # Uncomment to limit container disk to 50GB
+      # mem_limit: 1g
     environment:
-      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID:-}
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

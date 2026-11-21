@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException
-from backend.models import DriveFile
+from backend.models import DriveFile, DriveHealth
 from backend.drive import get_drive_client
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ async def get_file(file_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health")
+@router.get("/health", response_model=DriveHealth)
 async def health_check():
     """
     Check if Google Drive connection is working

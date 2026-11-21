@@ -43,12 +43,10 @@ class TorrentEngine:
             "enable_natpmp": True,
             "announce_to_all_tiers": True,
             "announce_to_all_trackers": True,
-            "connections_limit": settings.torrent.max_connections,
-            "upload_rate_limit": settings.torrent.upload_rate_limit,
-            "download_rate_limit": settings.torrent.download_rate_limit,
         }
 
         self.session.apply_settings(settings_pack)
+        self.apply_limits()
 
         # Add DHT routers
         self.session.add_dht_router("router.bittorrent.com", 6881)
@@ -57,6 +55,15 @@ class TorrentEngine:
 
         self.running = True
         logger.info("Torrent engine started successfully")
+
+    def apply_limits(self):
+        """Push the runtime-editable limits from settings into the live session."""
+        if self.session:
+            self.session.apply_settings({
+                "connections_limit": settings.torrent.max_connections,
+                "upload_rate_limit": settings.torrent.upload_rate_limit,
+                "download_rate_limit": settings.torrent.download_rate_limit,
+            })
 
     async def stop(self):
         """Stop torrent engine and cleanup"""

@@ -1,13 +1,14 @@
 import os
 import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
+import asyncio
 import pickle
 from backend.models import DriveFile
 from backend.config import settings
@@ -25,8 +26,9 @@ class GoogleDriveClient:
     def __init__(self):
         self.credentials: Optional[Credentials] = None
         self.service = None
+        self._folder_cache: Dict[str, str] = {}  # "parent:name" -> folder id
 
-    async def authenticate(self):
+    async def authenticate(self, interactive: bool = False):
         """Authenticate with Google Drive using OAuth2"""
         token_file = settings.google_drive.token_file
         creds_file = settings.google_drive.credentials_file
@@ -48,28 +50,28 @@ class GoogleDriveClient:
                         "Please download from Google Cloud Console and place it at this location."
                     )
 
+                if not interactive:
+                    # Never block a request on an interactive login (no browser/stdin in Docker)
+                    raise RuntimeError(
+                        "Google Drive not authorized yet. Run once:\n"
+                        "  docker compose run --rm -p 8765:8765 torrent-to-drive python -m backend.drive.client\n"
+                        "(or locally: python -m backend.drive.client)"
+                    )
+
                 logger.info("Starting OAuth2 flow for Google Drive...")
                 flow = InstalledAppFlow.from_client_secrets_file(creds_file, SCOPES)
-                
-                # Try browser-based auth first, fall back to console for headless servers
-                try:
-                    self.credentials = flow.run_local_server(port=0)
-                except Exception as e:
-                    logger.warning(f"Browser auth failed ({e}), using console flow...")
-                    print("\n" + "=" * 60)
-                    print("GOOGLE DRIVE AUTHENTICATION REQUIRED")
-                    print("=" * 60)
-                    print("\nNo browser available. Please authenticate manually:\n")
-                    
-                    # Generate auth URL manually
-                    auth_url, _ = flow.authorization_url(prompt='consent')
-                    print(f"1. Open this URL in your browser:\n\n{auth_url}\n")
-                    print("2. Authorize the application")
-                    print("3. Copy the authorization code and paste it below\n")
-                    
-                    code = input("Enter authorization code: ").strip()
-                    flow.fetch_token(code=code)
-                    self.credentials = flow.credentials
+                # Fixed port + 0.0.0.0 so the redirect to http://localhost:8765 reaches the container via the published port
+                self.credentials = flow.run_local_server(
+                    host="localhost",
+                    bind_addr="0.0.0.0",
+                    port=int(os.getenv("OAUTH_PORT", "8765")),
+                    open_browser=False,
+                    authorization_prompt_message=(
+                        "\nOpen this URL in your browser:\n\n{url}\n\n"
+                        "Remote server? Google redirects to localhost:8765 on YOUR machine, so first run:\n"
+                        "  ssh -L 8765:localhost:8765 <user>@<server>\n"
+                    ),
+                )
 
             # Save credentials
             os.makedirs(os.path.dirname(token_file), exist_ok=True)
@@ -123,6 +125,30 @@ class GoogleDriveClient:
         except HttpError as e:
             logger.error(f"Error listing files: {e}", exc_info=True)
             raise
+
+    async def existing_files(self, folder_id: str) -> Dict[str, Dict]:
+        """name -> {id, size, mime_type, is_folder} for a folder; {} on listing errors."""
+        try:
+            return {
+                f.name: {"id": f.id, "size": f.size, "mime_type": f.mime_type, "is_folder": f.is_folder}
+                for f in await self.list_files(folder_id=folder_id, page_size=1000)
+            }
+        except Exception as e:
+            logger.warning(f"Error listing existing files: {e}")
+            return {}
+
+    async def get_or_create_folder(self, name: str, parent_id: str) -> str:
+        key = f"{parent_id}:{name}"
+        if key in self._folder_cache:
+            return self._folder_cache[key]
+        existing = (await self.existing_files(parent_id)).get(name)
+        if existing and existing["is_folder"]:
+            folder_id = existing["id"]
+        else:
+            logger.info(f"Creating new folder: {name}")
+            folder_id = await with_retry(self.create_folder, name, parent_id=parent_id)
+        self._folder_cache[key] = folder_id
+        return folder_id
 
     async def create_folder(self, name: str, parent_id: Optional[str] = None) -> str:
         """Create a folder in Google Drive"""
@@ -235,6 +261,22 @@ class GoogleDriveClient:
             raise
 
 
+async def with_retry(func, *args, **kwargs):
+    """Await func with exponential backoff, settings.google_drive.max_retries attempts."""
+    max_retries = settings.google_drive.max_retries
+    delay = 1
+    for attempt in range(max_retries):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Failed after {max_retries} attempts")
+                raise
+            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            delay *= 2
+
+
 # Global client instance
 _client: Optional[GoogleDriveClient] = None
 
@@ -242,7 +284,15 @@ _client: Optional[GoogleDriveClient] = None
 async def get_drive_client() -> GoogleDriveClient:
     """Get global Google Drive client instance"""
     global _client
-    if _client is None:
-        _client = GoogleDriveClient()
-        await _client.authenticate()
+    if _client is None or _client.credentials is None:
+        client = GoogleDriveClient()
+        await client.authenticate()  # raises without a token; don't cache a credential-less client
+        _client = client
     return _client
+
+
+if __name__ == "__main__":
+    # One-time login: python -m backend.drive.client  -> writes token_file
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(GoogleDriveClient().authenticate(interactive=True))
+    print(f"Saved token to {settings.google_drive.token_file}")

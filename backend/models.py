@@ -76,3 +76,32 @@ class TorrentInfo(BaseModel):
     created_at: datetime
     updated_at: datetime
     drive_file_id: Optional[str] = None
+
+
+class ServerStats(BaseModel):
+    total_download_rate: int = 0
+    total_upload_rate: int = 0
+    active_torrents: int = 0
+    total_peers: int = 0
+    total_seeds: int = 0
+    queued_torrents: int = 0
+
+
+class DriveHealth(BaseModel):
+    status: str  # "healthy" | "unhealthy"
+    service: str
+    error: Optional[str] = None
+
+
+class AppSettings(BaseModel):
+    stream_to_drive: bool
+    stream_buffer_mb: int
+    max_concurrent_downloads: int
+    max_connections: int
+    download_rate_limit: int
+    upload_rate_limit: int
+    chunk_size: int
+    max_retries: int
+    drive_folder_id: Optional[str] = None
+    env_locked: List[str] = []
+
