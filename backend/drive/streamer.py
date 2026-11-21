@@ -80,6 +80,10 @@ class TorrentStreamer:
         n = self.fs.num_files()
         self.selected = sorted(file_indices) if file_indices is not None else list(range(n))
         self.state = StreamState(download_path / ".stream.json")
+        self._load_limits()
+
+    def _load_limits(self):
+        """Re-read buffer/chunk from settings so edits on the Settings page apply to the next chunk."""
         self.buffer = settings.torrent.stream_buffer_mb * 1024 * 1024
         self.chunk = max(DRIVE_ALIGN, settings.google_drive.chunk_size // DRIVE_ALIGN * DRIVE_ALIGN)
 
@@ -217,6 +221,7 @@ class TorrentStreamer:
                 raise asyncio.CancelledError()
 
             offset = st["committed"]
+            self._load_limits()  # chunk stays a 256 KiB multiple, so a mid-file change is valid for Drive
             n = min(self.chunk, size - offset)
             self._set_window(f_start + offset)
             if not self._range_ready(idx, offset, n):

@@ -31,7 +31,7 @@ export function useSettingsForm() {
     : mutation.isError
       ? { kind: 'error', text: mutation.error.message }
       : mutation.isSuccess
-        ? { kind: 'ok', text: 'Saved. Applies to new downloads; rate limits apply now.' }
+        ? { kind: 'ok', text: 'Saved and applied. Running streams pick it up on their next chunk.' }
         : { kind: 'idle', text: '' };
   const loadStatus: Status = query.isError ? { kind: 'error', text: `${query.error.message}. Is the backend running?` } : status;
 

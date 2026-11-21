@@ -54,6 +54,11 @@ def main():
         s._set_window(start)
         assert [i for i, p in enumerate(h.prios) if p] == [3, 4, 5]
 
+        from backend.config import settings
+        settings.torrent.stream_buffer_mb, settings.google_drive.chunk_size = 3, 512 * 1024 + 7
+        s._load_limits()  # live settings edit is picked up and chunk re-aligned to 256 KiB
+        assert (s.buffer, s.chunk) == (3 * 1024 * 1024, 512 * 1024), (s.buffer, s.chunk)
+
         h.have = set(range(info.num_pieces()))
         assert s._range_ready(b, 0, info.files().file_size(b))
         h.have.discard(info.num_pieces() - 1)
