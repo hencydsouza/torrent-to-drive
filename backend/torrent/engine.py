@@ -267,7 +267,7 @@ class TorrentEngine:
         """Remove torrent from engine"""
         handle = self.handles.get(torrent_id)
         if handle and handle.is_valid():
-            flags = lt.remove_flags_t.delete_files if delete_files else 0
+            flags = lt.session.delete_files if delete_files else 0  # 2.0 python binding exposes the flag on session
             self.session.remove_torrent(handle, flags)
             del self.handles[torrent_id]
             logger.info(f"Torrent {torrent_id} removed")
