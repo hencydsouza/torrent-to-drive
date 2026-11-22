@@ -189,6 +189,10 @@ class GoogleDriveClient:
 
         except HttpError as e:
             logger.error(f"Error creating folder: {e}", exc_info=True)
+            if e.resp.status == 404:
+                # drive.file scope only sees folders this app created, and only for the signed-in account
+                raise RuntimeError("Upload folder not found on Drive (deleted, or not created by this app/account). "
+                                   "Pick a folder in Settings → Drive upload, then Retry.") from e
             raise
 
     async def upload_file(
@@ -283,7 +287,7 @@ async def with_retry(func, *args, **kwargs):
         try:
             return await func(*args, **kwargs)
         except Exception as e:
-            if attempt == max_retries - 1:
+            if attempt == max_retries - 1 or isinstance(e, RuntimeError):  # RuntimeError = permanent, retry won't help
                 logger.error(f"Failed after {max_retries} attempts")
                 raise
             logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
