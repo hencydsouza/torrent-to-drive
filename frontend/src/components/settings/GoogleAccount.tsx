@@ -75,7 +75,7 @@ function FinishRow({ redirectUri, finish }: { redirectUri?: string | null } & Pi
         </span>
       </label>
       <div className="inline-form">
-        <input id="oauth-finish" name="url" className="input" placeholder="http://localhost:8000/api/auth/callback?code=…" spellCheck={false} />
+        <input id="oauth-finish" name="url" className="input" placeholder={`${redirectUri ?? ""}?code=…`} spellCheck={false} />
         <button type="submit" className="btn btn-secondary" disabled={finish.isPending}>Finish sign-in</button>
       </div>
     </form>
