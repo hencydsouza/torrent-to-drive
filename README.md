@@ -1,368 +1,165 @@
 # Torrent-to-Drive
 
-High-performance torrent downloader with automatic Google Drive upload. Built for Google Cloud VMs.
+Paste a magnet link, pick the files you want, and they end up in your Google Drive. A web UI shows progress, lets you pause and resume, and lets you browse what's already uploaded.
 
-## Architecture
+**It works even when the torrent is bigger than your disk.** Turn on *Stream to Drive* and the app downloads the torrent in order and uploads each chunk as soon as it's done, then deletes it locally. Disk use stays around the buffer size you set (2 GB by default).
 
-### Technology Stack
-- **Backend**: FastAPI (async, WebSocket support)
-- **Torrent Engine**: libtorrent (production-grade, used by qBittorrent/Deluge)
-- **Storage**: Google Drive API v3 with resumable uploads
-- **Frontend**: React + Vite
-- **Database**: SQLite (async)
-- **Concurrency**: asyncio with worker queues
+> Only download content you have the rights to.
 
-### System Flow
-1. User pastes magnet URL → Backend fetches metadata via libtorrent
-2. User selects files → Download worker starts (async queue)
-3. On completion → Upload worker pushes to Google Drive (chunked, resumable)
-4. WebSocket broadcasts real-time progress updates
-5. Storage UI queries Drive API for file listing
+---
 
-## Features
+## Pick how to run it
 
-- **Torrent Management**
-  - Fetch full metadata from magnet links (files, size, seeders, trackers)
-  - Selective file downloading
-  - Concurrent downloads with configurable limits
-  - Resume support
-  - Real-time progress tracking (speed, ETA, peers)
+| Option | Good for | You need |
+|---|---|---|
+| [Google Colab](#option-1-google-colab) | Trying it out, no install | A Google account |
+| [Docker](#option-2-docker-recommended) | Your own computer or server | Docker + a Google Cloud OAuth client |
+| [Without Docker](#option-3-without-docker) | A Linux server where you don't want Docker | Python 3.9+, Node 20+, a Google Cloud OAuth client |
 
-- **Google Drive Integration**
-  - Automatic upload to shared folder
-  - Chunked resumable uploads
-  - Retry logic with exponential backoff
-  - Directory structure preservation
+---
 
-- **Web Interface**
-  - Clean, minimal UI
-  - Real-time WebSocket updates
-  - Torrent page: Add, monitor, control downloads
-  - Storage page: Browse and download uploaded files
+## Option 1: Google Colab
 
-## Run on Google Colab (no install)
+1. Open [`torrent_to_drive_colab.ipynb`](torrent_to_drive_colab.ipynb) in Colab (**File → Open notebook → GitHub**, then paste this repo's URL).
+2. In the **Settings** cell:
+   - `DRIVE_FOLDER_ID`: leave it as `root` to upload to My Drive, or paste a folder ID ([how to find it](#finding-a-drive-folder-id)).
+   - `STREAM_TO_DRIVE`: turn it on for torrents bigger than about 100 GB, which is Colab's disk size.
+3. Click **Runtime → Run all**. Installing takes 2–3 minutes.
+4. Sign in when the Google popup appears. The app uses this login for Drive, so you don't need any credential files.
+5. Click the link printed by the **Open the UI** cell. If the page doesn't load or doesn't update, run the optional **Cloudflare** cell to get a public link. Anyone with that link can control the app, so don't share it.
 
-Open [`torrent_to_drive_colab.ipynb`](torrent_to_drive_colab.ipynb) in Colab
-(File → Open notebook → GitHub, paste this repo URL; a private repo needs "Include private repos").
+**Things to know:** Colab wipes the machine when the session ends (free tier: about 90 minutes idle, 12 hours max). Unfinished torrents start over on a new session, but files already in Drive are skipped. Colab may also stop sessions that use P2P traffic.
 
-1. **Settings cell**: set `DRIVE_FOLDER_ID` (the part after `drive.google.com/drive/folders/`, or `root` for My Drive). Turn on `STREAM_TO_DRIVE` for torrents bigger than Colab's ~100 GB disk.
-2. **Runtime → Run all.** Install takes 2–3 min.
-3. **Log in** when the Google popup appears. The app reuses this login for Drive (`GOOGLE_AUTH=adc`), so no `credentials.json` or OAuth client is needed.
-4. Click the link printed by the **Open the UI** cell. If the page doesn't load or progress doesn't update live, run the optional Cloudflare cell for a temporary public URL (anyone with it can control the app, so don't share it).
+---
 
-Limits: the VM is wiped when the runtime ends (free tier: ~90 min idle, ~12 h max). Interrupted torrents show as **Paused**; resume them after re-running the notebook. On a fresh VM the local data is gone, so the download starts over, but files already on Drive are skipped. Only download content you have the rights to; Colab may stop runtimes used for P2P.
+## Option 2: Docker (recommended)
 
-## Pause, resume and moving machines
+### 1. Get Google credentials (one time)
 
-- **Pause/Resume** in the Torrents list. Pausing keeps downloaded pieces; resuming continues from them.
-- After a restart or crash, torrents that were running show as **Paused**. Click Resume.
-- **Different machine:** copy the whole `data/` folder (it holds `torrents.db`, the partial downloads, and each stream's `.stream.json` upload cursor) plus `config/` (settings and Drive token). Resume then rechecks the files and continues where they left off. Without `data/` the torrent list is empty and you start over; files already on Drive are skipped. A streamed upload's Drive session expires after about a week; then that file re-uploads from the start.
+You need a Google OAuth client so the app can upload to your Drive.
 
-## Installation
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project, or pick an existing one.
+2. **APIs & Services → Library**: search for **Google Drive API** and click **Enable**.
+3. **APIs & Services → OAuth consent screen**: choose **External**, fill in the required fields, and add your own email under **Test users**.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID**. Choose **Desktop app** as the type.
+5. Download the JSON file and save it as `config/credentials.json` in this repo.
 
-### Prerequisites
-- Debian/Ubuntu-based system (Google Cloud VM)
-- Python 3.9+
-- Node.js 16+
-- Internet connection
-
-### Quick Setup
+### 2. Configure
 
 ```bash
-# Clone repository
-git clone <repository-url>
+git clone https://github.com/hencydsouza/torrent-to-drive.git
 cd torrent-to-drive
-
-# Make scripts executable
-chmod +x setup.sh start.sh
-
-# Run setup
-./setup.sh
-```
-
-The setup script will:
-1. Install system dependencies (Python, libtorrent, Node.js)
-2. Create Python virtual environment
-3. Install Python packages
-4. Build frontend
-5. Create necessary directories
-
-## Google Drive API Setup
-
-### 1. Create Google Cloud Project
-
-1. Go to https://console.cloud.google.com/
-2. Create new project or select existing
-3. Enable **Google Drive API**:
-   - Navigate to "APIs & Services" > "Library"
-   - Search for "Google Drive API"
-   - Click "Enable"
-
-### 2. Create OAuth 2.0 Credentials
-
-1. Go to "APIs & Services" > "Credentials"
-2. Click "Create Credentials" > "OAuth client ID"
-3. Configure consent screen if prompted:
-   - User Type: External
-   - Add your email as test user
-4. Application type: **Desktop app**
-5. Name: "Torrent-to-Drive"
-6. Click "Create"
-7. Download JSON file
-
-### 3. Configure Credentials
-
-```bash
-# Place downloaded file
-mv ~/Downloads/client_secret_*.json ./config/credentials.json
-```
-
-### 4. Get Shared Folder ID
-
-1. Create or open folder in Google Drive
-2. Right-click folder > "Share"
-3. Set appropriate permissions
-4. Copy folder ID from URL:
-   - URL: `https://drive.google.com/drive/folders/1a2b3c4d5e6f7g8h9`
-   - Folder ID: `1a2b3c4d5e6f7g8h9`
-
-### 5. Configure Environment
-
-```bash
-# Copy example env file
 cp .env.example .env
-
-# Edit .env
-nano .env
 ```
 
-Set your folder ID:
-```
-DRIVE_FOLDER_ID=your_folder_id_here
-```
+In `.env`, set `DRIVE_FOLDER_ID=root` to upload to My Drive, or put in a folder ID. Each torrent gets its own subfolder inside it.
 
-## Configuration
-
-Edit `config/settings.yaml` to customize:
-
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 8000
-
-torrent:
-  download_path: "./data/torrents"
-  max_concurrent_downloads: 5  # Adjust based on bandwidth
-  max_connections: 200
-  upload_rate_limit: 0  # 0 = unlimited (bytes/sec)
-  download_rate_limit: 0
-
-google_drive:
-  chunk_size: 10485760  # 10MB chunks
-  max_retries: 5
-```
-
-## Running the Application
-
-### Start Server
+### 3. Sign in to Google (one time)
 
 ```bash
-./start.sh
+docker compose run --rm -p 8765:8765 torrent-to-drive python -m backend.drive.client
 ```
 
-On first run:
-1. Browser opens for Google OAuth authentication
-2. Sign in with your Google account
-3. Grant permissions
-4. Token saved to `config/token.json`
+This prints a link. Open it in your browser, sign in, and approve access. The login is saved to `config/token.json`, so you only do this once.
 
-### Access Web Interface
-
-Open browser: http://localhost:8000
-
-Or from remote machine: http://YOUR_VM_IP:8000
-
-### Running as Service (Production)
-
-Create systemd service:
+### 4. Start
 
 ```bash
-sudo nano /etc/systemd/system/torrent-to-drive.service
+docker compose up -d --build
 ```
 
-```ini
-[Unit]
-Description=Torrent-to-Drive Service
-After=network.target
+Open **http://localhost:8000**, or `http://<server-ip>:8000` from another machine.
 
-[Service]
-Type=simple
-User=YOUR_USER
-WorkingDirectory=/home/YOUR_USER/torrent-to-drive
-Environment="PATH=/home/YOUR_USER/torrent-to-drive/venv/bin"
-ExecStart=/home/YOUR_USER/torrent-to-drive/venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
-Restart=always
+- **Update after pulling new code:** `docker compose up -d --build`
+- **After editing `.env`:** `docker compose up -d`. No rebuild needed.
+- **Logs:** `docker compose logs -f`
 
-[Install]
-WantedBy=multi-user.target
-```
+---
 
-Enable and start:
+## Option 3: Without Docker
+
+On Debian or Ubuntu:
+
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable torrent-to-drive
-sudo systemctl start torrent-to-drive
-sudo systemctl status torrent-to-drive
+./setup.sh                          # installs libtorrent, Python packages, builds the UI
+python -m backend.drive.client      # one-time Google sign-in (same as Docker step 3)
+./start.sh                          # runs the app on port 8000
 ```
 
-## Usage
+First follow [step 1](#1-get-google-credentials-one-time) and [step 2](#2-configure) from the Docker section. `ecosystem.config.js` lets you run it under PM2 so it stays up.
 
-### Adding a Torrent
+---
 
-1. Navigate to "Torrents" page
-2. Paste magnet URL in input box
-3. Click "Fetch Metadata"
-4. Review torrent info (name, size, files)
-5. Select files to download (or "Select All")
-6. Click "Start Download"
+## Using it
 
-### Monitoring Progress
+1. **Torrents** tab → **Add torrent** (or press `n`). Paste a magnet link; it's read automatically.
+2. Untick any files you don't want, then click **Start download**.
+3. Each row shows downloaded vs total, speed, peers, time left, and how much is already on Drive.
+4. When a torrent is done, the row gets an **Open in Drive** link and the local copy is deleted.
+5. The **Storage** tab lets you browse and search your Drive folder.
 
-- Real-time progress bars
-- Download/upload speeds
-- Peer/seed count
-- ETA calculation
-- State transitions: downloading → completed → uploading → uploaded
+**Pause and resume:** pausing keeps what's already downloaded. If the app restarts or crashes, running torrents come back as **Paused**. Click Resume.
 
-### Accessing Files
+**Moving to another machine:** copy the `data/` folder (torrent list, partial downloads, upload positions) and the `config/` folder (settings and Google login). Then resume.
 
-1. Navigate to "Storage" page
-2. Browse uploaded files/folders
-3. Click "Download" to get file from Drive
-4. Files open in Google Drive web interface
+---
 
-## API Endpoints
+## Settings
 
-### Torrents
+Most settings are on the **Settings** page and take effect without a restart.
 
-- `POST /api/torrents/metadata` - Fetch metadata from magnet
-- `POST /api/torrents/` - Add torrent
-- `POST /api/torrents/{id}/download` - Start download
-- `GET /api/torrents/` - List all torrents
-- `GET /api/torrents/{id}` - Get torrent details
-- `GET /api/torrents/{id}/progress` - Get live progress
-- `POST /api/torrents/{id}/pause` - Pause download
-- `POST /api/torrents/{id}/resume` - Resume download
-- `DELETE /api/torrents/{id}` - Delete torrent
+| Setting | What it does | Default |
+|---|---|---|
+| Stream to Drive | Upload while downloading, deleting local chunks as they go. Use it when the torrent is bigger than your free disk. | Off |
+| Stream buffer | How much the torrent can download ahead of the upload. Roughly the disk space each streaming torrent uses. | 2 GB |
+| Parallel torrents | How many torrents download at once | 5 |
+| Max peers | Connection limit | 200 |
+| Download / upload limit | Speed caps, 0 = unlimited | 0 |
+| Upload chunk size | Size of each piece sent to Drive. Bigger is faster on fast connections. | 10 MB |
+| Retries | How many times a failed Drive upload is retried | 5 |
+| Extra trackers | Added to every magnet. More trackers usually means more peers. | none |
 
-### Storage
+Settings are saved to `config/settings.yaml`. If `STREAM_TO_DRIVE` or `STREAM_BUFFER_MB` is set in `.env`, that wins and the setting is locked in the UI.
 
-- `GET /api/storage/files` - List Drive files
-- `GET /api/storage/files/{id}` - Get file metadata
-- `GET /api/storage/health` - Check Drive connection
+### Finding a Drive folder ID
 
-### WebSocket
+Open the folder in Drive. The ID is the last part of the URL: `drive.google.com/drive/folders/`**`1a2b3c4d5e6f`**.
 
-- `WS /ws` - Real-time progress updates
+---
+
+## Limits worth knowing
+
+- **Google limits uploads to 750 GB per day** per account. Past that, uploads pause until the next day.
+- The app can only see files and folders it created itself. This is Google's `drive.file` permission, which is safer. If uploading to your own folder fails with a permission error, use `root`, or let the app create the folder.
+- Streaming downloads in order, which can be a little slower than normal mode on torrents with few peers.
+
+---
 
 ## Troubleshooting
 
-### libtorrent not found
+| Problem | Fix |
+|---|---|
+| "Not authenticated" or Drive shows disconnected | Do the [one-time sign-in](#3-sign-in-to-google-one-time) again. If it still fails, delete `config/token.json` first. |
+| Google says "access blocked" or "app not verified" | Add your email under **Test users** on the OAuth consent screen. |
+| Download is slow or stuck at 0 | Add trackers in Settings and check that the torrent has seeders. On a cloud VM, check the firewall allows outgoing traffic. |
+| Disk fills up | Turn on **Stream to Drive**, or lower the stream buffer. |
+| Port 8000 already in use | Change the left side of `ports` in `docker-compose.yml`, for example `"8080:8000"`. |
 
-```bash
-sudo apt-get install python3-libtorrent libtorrent-rasterbar-dev
-```
+---
 
-### Google Drive authentication fails
+## Security
 
-1. Check credentials.json is valid
-2. Delete config/token.json and re-authenticate
-3. Ensure OAuth consent screen configured
-4. Add your email as test user
+There is **no login** on the web UI. Anyone who can open the page can add torrents and see your Drive folder. Don't expose port 8000 to the internet. Use a firewall, an SSH tunnel (`ssh -L 8000:localhost:8000 server`), or a reverse proxy with authentication. Keep `config/credentials.json` and `config/token.json` private, because `token.json` gives access to your Drive.
 
-### Slow downloads
+---
 
-1. Increase `max_connections` in settings.yaml
-2. Check VM network bandwidth limits
-3. Verify seeders available for torrent
+## For developers
 
-### Port already in use
-
-Change port in config/settings.yaml or use:
-```bash
-cd backend
-python -m uvicorn main:app --port 8080
-```
-
-## Performance Tuning
-
-### For High Bandwidth VMs
-
-```yaml
-torrent:
-  max_concurrent_downloads: 10
-  max_connections: 500
-
-google_drive:
-  chunk_size: 52428800  # 50MB chunks
-```
-
-### For Limited Resources
-
-```yaml
-torrent:
-  max_concurrent_downloads: 2
-  max_connections: 100
-
-google_drive:
-  chunk_size: 5242880  # 5MB chunks
-```
-
-## Security Considerations
-
-1. **Firewall**: Restrict port 8000 to trusted IPs
-2. **OAuth**: Keep credentials.json and token.json secure
-3. **HTTPS**: Use nginx reverse proxy with SSL for production
-4. **Authentication**: Add auth middleware for multi-user setup
-
-## Project Structure
-
-```
-torrent-to-drive/
-├── backend/
-│   ├── main.py              # FastAPI app
-│   ├── config.py            # Configuration
-│   ├── models.py            # Data models
-│   ├── api/
-│   │   ├── torrents.py      # Torrent endpoints
-│   │   └── storage.py       # Storage endpoints
-│   ├── torrent/
-│   │   ├── engine.py        # libtorrent wrapper
-│   │   └── worker.py        # Download worker
-│   ├── drive/
-│   │   ├── client.py        # Google Drive client
-│   │   └── uploader.py      # Upload worker
-│   └── database/
-│       └── db.py            # SQLite database
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── TorrentPage.jsx
-│   │   │   └── StoragePage.jsx
-│   │   ├── services/
-│   │   │   └── api.js       # API client
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   └── package.json
-├── config/
-│   ├── settings.yaml        # Application config
-│   └── credentials.json     # Google OAuth (not in git)
-├── data/                    # Downloads and database (not in git)
-├── requirements.txt
-├── setup.sh
-├── start.sh
-└── README.md
-```
+- **Backend:** FastAPI + libtorrent + SQLite (`backend/`). API docs at `/docs` while it runs.
+- **Frontend:** React + TypeScript + Vite, TanStack Query for server data, Zustand for UI state (`frontend/src/`).
+- **Dev UI:** `cd frontend && npm install && npm run dev`. API calls are proxied to `:8000`.
+- **API types:** after changing a backend model, run `npm run gen:api` with the backend running.
+- **Streaming self-check:** `PYTHONPATH=. python tests/test_streamer.py` (Linux only, because it uses hole punching).
 
 ## License
 

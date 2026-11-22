@@ -6,8 +6,12 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 dist/
 build/
 
@@ -15,19 +19,30 @@ build/
 data/
 *.db
 *.sqlite
+*.db-journal
 
-# Google Drive credentials
+# Secrets: Google login and local config (copy .env.example to .env)
+.env
+.env.*
+!.env.example
 config/credentials.json
 config/token.json
 config/token.pickle
-
-# Environment variables
-# .env
+config/*.bak
+client_secret*.json
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
+
+# Local notes / Claude session exports
+session-*.md
+.claude/settings.local.json
+
+# Colab / Jupyter
+.ipynb_checkpoints/
 
 # IDE
 .vscode/
