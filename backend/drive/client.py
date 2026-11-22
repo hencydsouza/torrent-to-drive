@@ -49,6 +49,7 @@ class GoogleDriveClient:
         self.credentials: Optional[Credentials] = None
         self.service = None
         self._folder_cache: Dict[str, str] = {}  # "parent:name" -> folder id
+        self._folder_locks: Dict[str, asyncio.Lock] = {}
 
     async def authenticate(self, interactive: bool = False):
         """Authenticate with Google Drive using OAuth2"""
@@ -159,29 +160,31 @@ class GoogleDriveClient:
             raise
 
     async def existing_files(self, folder_id: str) -> Dict[str, Dict]:
-        """name -> {id, size, mime_type, is_folder} for a folder; {} on listing errors."""
-        try:
-            return {
-                f.name: {"id": f.id, "size": f.size, "mime_type": f.mime_type, "is_folder": f.is_folder,
-                         "md5": f.md5_checksum}
-                for f in await self.list_files(folder_id=folder_id, page_size=1000, all_pages=True)
-            }
-        except Exception as e:
-            logger.warning(f"Error listing existing files: {e}")
-            return {}
+        """name -> {id, size, mime_type, is_folder, md5} for a folder. Raises on listing errors: treating a failed
+        listing as "empty" made callers create duplicate folders and re-upload existing files."""
+        files = await with_retry(self.list_files, folder_id=folder_id, page_size=1000, all_pages=True)
+        out: Dict[str, Dict] = {}
+        for f in files:  # newest first; first one wins
+            out.setdefault(f.name, {"id": f.id, "size": f.size, "mime_type": f.mime_type,
+                                    "is_folder": f.is_folder, "md5": f.md5_checksum})
+        return out
 
     async def get_or_create_folder(self, name: str, parent_id: str) -> str:
         key = f"{parent_id}:{name}"
-        if key in self._folder_cache:
-            return self._folder_cache[key]
-        existing = (await self.existing_files(parent_id)).get(name)
-        if existing and existing["is_folder"]:
-            folder_id = existing["id"]
-        else:
-            logger.info(f"Creating new folder: {name}")
-            folder_id = await with_retry(self.create_folder, name, parent_id=parent_id)
-        self._folder_cache[key] = folder_id
-        return folder_id
+        async with self._folder_locks.setdefault(key, asyncio.Lock()):  # two torrents with one name: one create
+            if key in self._folder_cache:
+                return self._folder_cache[key]
+            files = await with_retry(self.list_files, folder_id=parent_id, page_size=1000, all_pages=True)
+            folders = [f for f in files if f.is_folder and f.name == name]  # createdTime desc
+            if folders:
+                folder_id = folders[-1].id  # oldest: where earlier runs put their uploads
+                if len(folders) > 1:
+                    logger.warning(f"{len(folders)} Drive folders named '{name}' in {parent_id}; using oldest {folder_id}")
+            else:
+                logger.info(f"Creating new folder: {name}")
+                folder_id = await with_retry(self.create_folder, name, parent_id=parent_id)
+            self._folder_cache[key] = folder_id
+            return folder_id
 
     async def create_folder(self, name: str, parent_id: Optional[str] = None) -> str:
         """Create a folder in Google Drive"""

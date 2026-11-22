@@ -28,6 +28,12 @@ async def fetch_metadata(request: TorrentRequest):
     try:
         engine = await get_engine()
         metadata = await engine.fetch_metadata(request.magnet_url, timeout=60)
+
+        # Same torrent already added: return it instead of downloading again into a fresh folder
+        for existing in await db.get_all_torrents():
+            if existing.metadata and existing.metadata.info_hash == metadata.info_hash:
+                logger.info(f"Torrent {metadata.info_hash} already exists as {existing.id}")
+                return existing
         return metadata
 
     except TimeoutError:
