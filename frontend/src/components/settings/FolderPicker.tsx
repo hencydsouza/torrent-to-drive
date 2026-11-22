@@ -5,7 +5,7 @@ import { keys } from '../../lib/queryClient';
 import { useUi } from '../../stores/ui';
 import Icon from '../ui/Icon';
 
-// Browse Drive folders and save one as the upload folder. drive.file scope only lists folders this app made.
+// Browse Drive folders and save one as the upload folder.
 export default function FolderPicker() {
   const { pickerPath, closePicker, pickerEnter, pickerGoTo } = useUi();
   const ref = useRef<HTMLDialogElement>(null);
@@ -20,8 +20,8 @@ export default function FolderPicker() {
   }, [pickerPath]);
 
   const { data, isPending, error } = useQuery({
-    queryKey: keys.driveFiles(current?.id),
-    queryFn: () => storageAPI.listFiles(current?.id),
+    queryKey: [...keys.driveFiles(current?.id), 'folders'],
+    queryFn: () => storageAPI.listFolders(current?.id),
     enabled: !!current,
   });
   const folders = (data ?? []).filter((f) => f.is_folder);
@@ -73,7 +73,7 @@ export default function FolderPicker() {
             <li className="folder-note">
               <Icon name="folder" />
               <strong>No folders in here</strong>
-              <span>Only folders this app created are listed. Make one below, or upload here.</span>
+              <span>Make one below, or upload here.</span>
             </li>
           )}
           {folders.map((f) => (

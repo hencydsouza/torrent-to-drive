@@ -139,7 +139,7 @@ Open the folder in Drive. The ID is the last part of the URL: `drive.google.com/
 ## Limits worth knowing
 
 - **Google limits uploads to 750 GB per day** per account. Past that, uploads pause until the next day.
-- The app can only see files and folders it created itself. This is Google's `drive.file` permission, which is safer. If uploading to your own folder fails with a permission error, use `root`, or let the app create the folder.
+- The app asks for full Google Drive access so the folder picker can show and upload into your own folders. The sign-in token in `config/` can read and change your whole Drive, so keep that folder private. If you signed in with an older version, sign in again once.
 - Streaming downloads in order, which can be a little slower than normal mode on torrents with few peers.
 
 ---

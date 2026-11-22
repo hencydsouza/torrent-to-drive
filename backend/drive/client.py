@@ -21,7 +21,8 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Scopes required for Google Drive access
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+# Full Drive: the folder picker lists and uploads into the user's own folders (drive.file only saw app-made ones)
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 FILE_FIELDS = "id, name, size, mimeType, md5Checksum, createdTime, webViewLink, webContentLink"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 DRIVE_TIMEOUT = 30  # seconds per Drive metadata call
@@ -63,6 +64,10 @@ class GoogleDriveClient:
             return
 
         self.credentials = load_token(token_file)
+        if self.credentials and not self.credentials.has_scopes(SCOPES):
+            # Token from before the switch to full Drive access; refreshing can't widen it
+            self.credentials = None
+            raise RuntimeError("Sign in again to let the app see all your Drive folders.")
 
         # Refresh or get new credentials
         if not self.credentials or not self.credentials.valid:
@@ -114,7 +119,7 @@ class GoogleDriveClient:
         return await asyncio.to_thread(request.execute, http=self._http())
 
     async def list_files(self, folder_id: Optional[str] = None, page_size: int = 100,
-                         all_pages: bool = False) -> List[DriveFile]:
+                         all_pages: bool = False, folders_only: bool = False) -> List[DriveFile]:
         """List files in the specified folder or shared folder"""
         if not self.service:
             await self.authenticate()
@@ -125,6 +130,8 @@ class GoogleDriveClient:
 
         try:
             query = f"'{folder_id}' in parents and trashed=false"
+            if folders_only:
+                query += f" and mimeType='{FOLDER_MIME}'"
             items, token = [], None
             while True:
                 results = await self._run(
@@ -134,7 +141,7 @@ class GoogleDriveClient:
                         pageSize=page_size,
                         pageToken=token,
                         fields=f"nextPageToken, files({FILE_FIELDS})",
-                        orderBy="createdTime desc",
+                        orderBy="folder,name" if folders_only else "createdTime desc",
                     )
                 )
                 items += results.get("files", [])
@@ -198,8 +205,7 @@ class GoogleDriveClient:
         except HttpError as e:
             logger.error(f"Error creating folder: {e}", exc_info=True)
             if e.resp.status == 404:
-                # drive.file scope only sees folders this app created, and only for the signed-in account
-                raise RuntimeError("Upload folder not found on Drive (deleted, or not created by this app/account). "
+                raise RuntimeError("Upload folder not found on Drive (deleted, or in another Google account). "
                                    "Pick a folder in Settings → Drive upload, then Retry.") from e
             raise
 
@@ -309,7 +315,7 @@ def load_token(token_file: str) -> Optional[Credentials]:
     if not os.path.exists(token_file):
         return None
     try:
-        return Credentials.from_authorized_user_file(token_file, SCOPES)
+        return Credentials.from_authorized_user_file(token_file)  # keep the scopes the token was granted
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
         with open(token_file, "rb") as f:
             creds = pickle.load(f)  # legacy token written by older versions of this app

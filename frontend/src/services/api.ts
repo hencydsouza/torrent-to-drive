@@ -60,6 +60,8 @@ export const torrentAPI = {
 export const storageAPI = {
   listFiles: (folderId?: string) =>
     unwrap(client.GET('/api/storage/files', { params: { query: { folder_id: folderId } } }), 'Could not load Drive files'),
+  listFolders: (folderId?: string) =>
+    unwrap(client.GET('/api/storage/files', { params: { query: { folder_id: folderId, folders_only: true } } }), 'Could not load Drive folders'),
   getFile: (fileId: string) =>
     unwrap(client.GET('/api/storage/files/{file_id}', { params: { path: { file_id: fileId } } }), 'Could not load file'),
   checkHealth: () => unwrap(client.GET('/api/storage/health'), 'Drive health check failed'),

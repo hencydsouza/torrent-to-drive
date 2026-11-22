@@ -1195,6 +1195,7 @@ export interface operations {
         parameters: {
             query?: {
                 folder_id?: string | null;
+                folders_only?: boolean;
             };
             header?: never;
             path?: never;

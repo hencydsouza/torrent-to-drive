@@ -23,7 +23,7 @@ type Actions = ReturnType<typeof useAuthActions>;
 function AccountRow({ auth, login, logout }: { auth: AuthStatus } & Pick<Actions, 'login' | 'logout'>) {
   const hint = auth.connected
     ? (auth.account ?? 'Google Drive is ready.')
-    : auth.has_client ? 'Sign in to let the app upload to your Drive.' : 'Step 1: add your OAuth client file.';
+    : auth.has_client ? (auth.error ?? 'Sign in to let the app upload to your Drive.') : 'Step 1: add your OAuth client file.';
   return (
     <div className="setting-row">
       <div className="setting-text">

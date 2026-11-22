@@ -26,7 +26,7 @@ async def _drive_call(what: str, fn, *args, **kwargs):
         raise HTTPException(status_code=400, detail=str(e))
     except HttpError as e:
         if e.resp.status == 404:
-            raise HTTPException(status_code=404, detail="Not found on Drive, or not created by this app")
+            raise HTTPException(status_code=404, detail="Not found on Drive")
         logger.error(f"Error {what}: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
@@ -35,9 +35,10 @@ async def _drive_call(what: str, fn, *args, **kwargs):
 
 
 @router.get("/files", response_model=List[DriveFile])
-async def list_files(folder_id: Optional[str] = None):
+async def list_files(folder_id: Optional[str] = None, folders_only: bool = False):
     """List files in a Drive folder (default: the configured upload folder)."""
-    return await _drive_call("listing files", "list_files", folder_id=folder_id)
+    return await _drive_call("listing files", "list_files", folder_id=folder_id,
+                             folders_only=folders_only, all_pages=folders_only)
 
 
 @router.post("/folders", response_model=DriveFile)
