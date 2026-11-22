@@ -276,7 +276,11 @@ class TorrentStreamer:
                     raise
                 logger.warning(f"[stream] chunk @{offset} of {name} failed ({e}); resyncing")
                 await asyncio.sleep(2 ** failures)
-                committed = await self._query(st["session"], size)
+                try:
+                    committed = await self._query(st["session"], size)
+                except Exception as qe:  # network still down: retry the chunk, don't fail the torrent
+                    logger.warning(f"[stream] resync of {name} failed ({qe}); will retry")
+                    continue
                 if committed is None:
                     raise RuntimeError(f"Drive session for {name} expired mid-upload")
                 st["committed"] = committed

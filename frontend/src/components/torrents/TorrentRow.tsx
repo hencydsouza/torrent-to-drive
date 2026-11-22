@@ -41,8 +41,8 @@ function RowActions({ torrent, busy, onPause, onResume, onDelete }: RowActionsPr
   return (
     <div className="row-actions">
       {(state === 'downloading' || state === 'uploading') && <IconButton icon="pause" label="Pause" busy={busy === 'pause'} disabled={!!busy} onClick={() => onPause(torrent.id)} />}
-      {(state === 'paused' || state === 'metadata_ready') && (
-        <IconButton icon="play" label={state === 'paused' ? 'Resume' : 'Start'} busy={busy === 'resume'} disabled={!!busy} onClick={() => onResume(torrent.id)} />
+      {(state === 'paused' || state === 'metadata_ready' || state === 'error') && (
+        <IconButton icon="play" label={{ paused: 'Resume', error: 'Retry' }[state as string] ?? 'Start'} busy={busy === 'resume'} disabled={!!busy} onClick={() => onResume(torrent.id)} />
       )}
       {state === 'uploaded' && torrent.drive_file_id ? (
         <a

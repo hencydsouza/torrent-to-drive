@@ -231,6 +231,8 @@ class TorrentWorker:
 
         except Exception as e:
             logger.error(f"Error downloading torrent {torrent_id}: {e}", exc_info=True)
+            # Stop libtorrent too, or a "Failed" torrent keeps downloading. Retry re-queues and resumes the handle.
+            await (await get_engine()).pause_torrent(torrent_id)
             progress = TorrentProgress(
                 torrent_id=torrent_id,
                 state=TorrentState.ERROR,
