@@ -33,6 +33,14 @@ class GoogleDriveClient:
         token_file = settings.google_drive.token_file
         creds_file = settings.google_drive.credentials_file
 
+        if os.getenv("GOOGLE_AUTH") == "adc":
+            # Google Colab: reuse the notebook login (google.colab.auth.authenticate_user), no OAuth client needed
+            import google.auth
+            self.credentials, _ = google.auth.default(scopes=SCOPES)
+            self.service = build("drive", "v3", credentials=self.credentials)
+            logger.info("Google Drive client authenticated with application default credentials")
+            return
+
         # Load existing credentials
         if os.path.exists(token_file):
             with open(token_file, "rb") as token:

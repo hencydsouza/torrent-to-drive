@@ -40,6 +40,24 @@ High-performance torrent downloader with automatic Google Drive upload. Built fo
   - Torrent page: Add, monitor, control downloads
   - Storage page: Browse and download uploaded files
 
+## Run on Google Colab (no install)
+
+Open [`torrent_to_drive_colab.ipynb`](torrent_to_drive_colab.ipynb) in Colab
+(File → Open notebook → GitHub, paste this repo URL; a private repo needs "Include private repos").
+
+1. **Settings cell**: set `DRIVE_FOLDER_ID` (the part after `drive.google.com/drive/folders/`, or `root` for My Drive). Turn on `STREAM_TO_DRIVE` for torrents bigger than Colab's ~100 GB disk.
+2. **Runtime → Run all.** Install takes 2–3 min.
+3. **Log in** when the Google popup appears. The app reuses this login for Drive (`GOOGLE_AUTH=adc`), so no `credentials.json` or OAuth client is needed.
+4. Click the link printed by the **Open the UI** cell. If the page doesn't load or progress doesn't update live, run the optional Cloudflare cell for a temporary public URL (anyone with it can control the app, so don't share it).
+
+Limits: the VM is wiped when the runtime ends (free tier: ~90 min idle, ~12 h max). Interrupted torrents show as **Paused**; resume them after re-running the notebook. On a fresh VM the local data is gone, so the download starts over, but files already on Drive are skipped. Only download content you have the rights to; Colab may stop runtimes used for P2P.
+
+## Pause, resume and moving machines
+
+- **Pause/Resume** in the Torrents list. Pausing keeps downloaded pieces; resuming continues from them.
+- After a restart or crash, torrents that were running show as **Paused**. Click Resume.
+- **Different machine:** copy the whole `data/` folder (it holds `torrents.db`, the partial downloads, and each stream's `.stream.json` upload cursor) plus `config/` (settings and Drive token). Resume then rechecks the files and continues where they left off. Without `data/` the torrent list is empty and you start over; files already on Drive are skipped. A streamed upload's Drive session expires after about a week; then that file re-uploads from the start.
+
 ## Installation
 
 ### Prerequisites
