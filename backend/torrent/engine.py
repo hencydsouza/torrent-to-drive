@@ -48,6 +48,16 @@ class TorrentEngine:
             "enable_natpmp": True,
             "announce_to_all_tiers": True,
             "announce_to_all_trackers": True,
+            # Our worker queues torrents; libtorrent's own queue (default 3 active) would stall the 4th+ one
+            "active_downloads": -1,
+            "active_seeds": -1,
+            "active_limit": -1,
+            # Find and fill peers faster: more connection attempts per second, a bigger start-up burst,
+            # and deeper request pipelines per peer (libtorrent defaults: 30, 30, 500, 15s)
+            "connection_speed": 200,
+            "torrent_connect_boost": 100,
+            "max_out_request_queue": 1500,
+            "peer_connect_timeout": 7,
         }
 
         self.session.apply_settings(settings_pack)
