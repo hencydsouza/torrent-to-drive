@@ -534,6 +534,11 @@ export interface components {
              * @default 0
              */
             total_size: number;
+            /**
+             * Uploaded
+             * @default 0
+             */
+            uploaded: number;
             /** Eta */
             eta?: number | null;
             /** Error */

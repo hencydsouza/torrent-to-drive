@@ -115,7 +115,9 @@ class UploadWorker:
             'uploaded': 0,
             'skipped': 0,
             'failed': 0,
+            'bytes': 0,  # finished bytes on Drive (uploaded or already there)
         }
+        engine.uploaded[torrent_id] = 0
 
         try:
             logger.info(f"Starting upload for torrent {torrent_id}")
@@ -151,10 +153,13 @@ class UploadWorker:
                         drive.upload_file,
                         file_path,
                         parent_id=root_folder_id,
+                        on_progress=self._progress_reporter(engine, torrent_id, stats),
                     )
+                    self._count_done(engine, torrent_id, stats, file_path)
                     stats['uploaded'] += 1
                     logger.info(f"Uploaded: {file_path.name}")
                 else:
+                    self._count_done(engine, torrent_id, stats, file_path)
                     stats['skipped'] += 1
             else:
                 # Multi-file torrent - upload directory structure
@@ -163,6 +168,8 @@ class UploadWorker:
                     download_path,
                     root_folder_id,
                     stats,
+                    engine,
+                    torrent_id,
                 )
 
             if stats['failed']:
@@ -207,6 +214,8 @@ class UploadWorker:
         local_path: Path,
         parent_id: str,
         stats: Dict,
+        engine,
+        torrent_id: str,
     ):
         """
         Recursively upload directory structure to Drive with duplicate detection
@@ -226,10 +235,13 @@ class UploadWorker:
                             drive.upload_file,
                             item,
                             parent_id=parent_id,
+                            on_progress=self._progress_reporter(engine, torrent_id, stats),
                         )
+                        self._count_done(engine, torrent_id, stats, item)
                         stats['uploaded'] += 1
                         logger.info(f"Uploaded: {item.name}")
                     else:
+                        self._count_done(engine, torrent_id, stats, item)
                         stats['skipped'] += 1
 
                 elif item.is_dir():
@@ -244,11 +256,23 @@ class UploadWorker:
                         item,
                         subfolder_id,
                         stats,
+                        engine,
+                        torrent_id,
                     )
 
             except Exception as e:
                 logger.error(f"Error uploading {item.name}: {e}", exc_info=True)
                 stats['failed'] += 1
+
+    @staticmethod
+    def _progress_reporter(engine, torrent_id: str, stats: Dict):
+        # Bytes on Drive = finished files + how far the current file's resumable upload got.
+        return lambda sent: engine.uploaded.__setitem__(torrent_id, stats['bytes'] + sent)
+
+    @staticmethod
+    def _count_done(engine, torrent_id: str, stats: Dict, path: Path):
+        stats['bytes'] += path.stat().st_size
+        engine.uploaded[torrent_id] = stats['bytes']
 
     async def _cleanup_local_files(self, path: Path):
         """Remove local files after successful upload"""

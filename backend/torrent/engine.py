@@ -23,6 +23,8 @@ class TorrentEngine:
         self.handles: Dict[str, lt.torrent_handle] = {}
         self.running = False
         self._progress_callbacks: Dict[str, List[Callable]] = {}
+        self.selected: Dict[str, Optional[List[int]]] = {}  # torrent_id -> chosen file indices (None = all)
+        self.uploaded: Dict[str, int] = {}  # torrent_id -> bytes already on Drive, set by the uploaders
 
     async def start(self):
         """Initialize libtorrent session"""
@@ -200,6 +202,7 @@ class TorrentEngine:
                 raise TimeoutError(f"Metadata fetch timed out after {timeout}s")
             await asyncio.sleep(0.1)
 
+        self.selected[torrent_id] = file_indices
         # Set file priorities (0 = don't download, 4 = normal)
         if file_indices is not None:
             info = handle.torrent_file()
@@ -234,22 +237,32 @@ class TorrentEngine:
         else:
             state = TorrentState.DOWNLOADING
 
-        # Calculate ETA
+        # Measure against the chosen files, not libtorrent's "wanted" set: streaming re-prioritises
+        # pieces every chunk, so total_wanted is a moving window and status.progress jumps around.
+        total, done = status.total_wanted, status.total_wanted_done
+        if handle.has_metadata():
+            fs = handle.torrent_file().files()
+            chosen = self.selected.get(torrent_id)
+            idx = chosen if chosen is not None else range(fs.num_files())
+            per_file = handle.file_progress(lt.torrent_handle.piece_granularity)
+            total = sum(fs.file_size(i) for i in idx)
+            done = sum(per_file[i] for i in idx)
+
         eta = None
         if status.download_rate > 0:
-            remaining = status.total_wanted - status.total_wanted_done
-            eta = int(remaining / status.download_rate)
+            eta = int((total - done) / status.download_rate)
 
         return TorrentProgress(
             torrent_id=torrent_id,
             state=state,
-            progress=status.progress * 100,
+            progress=done / total * 100 if total else status.progress * 100,
             download_rate=status.download_rate,
             upload_rate=status.upload_rate,
             num_peers=status.num_peers,
             num_seeds=status.num_seeds,
-            downloaded=status.total_wanted_done,
-            total_size=status.total_wanted,
+            downloaded=done,
+            total_size=total,
+            uploaded=self.uploaded.get(torrent_id, 0),
             eta=eta,
         )
 

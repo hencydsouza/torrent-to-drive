@@ -12,7 +12,7 @@ import { useTorrents } from '../hooks/useTorrents';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { useAddTorrent } from '../stores/addTorrent';
 import { useUi } from '../stores/ui';
-import { matchesFilter } from '../lib/torrentState';
+import { isLive, matchesFilter } from '../lib/torrentState';
 import { formatSpeed } from '../lib/format';
 import './TorrentPage.css';
 
@@ -92,7 +92,7 @@ export default function TorrentPage() {
                   <TorrentRow
                     key={torrent.id}
                     torrent={torrent}
-                    progress={progressById[torrent.id] || torrent.progress}
+                    progress={isLive(torrent.state) ? progressById[torrent.id] || torrent.progress : torrent.progress}
                     busy={busyById[torrent.id]}
                     onPause={pause}
                     onResume={resume}

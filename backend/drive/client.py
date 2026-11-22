@@ -1,7 +1,9 @@
 import os
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Callable, Optional, List, Dict
+import httplib2
+import google_auth_httplib2
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -186,6 +188,7 @@ class GoogleDriveClient:
         file_path: Path,
         parent_id: Optional[str] = None,
         resumable: bool = True,
+        on_progress: Optional[Callable[[int], None]] = None,
     ) -> str:
         """
         Upload a file to Google Drive with resumable upload support
@@ -203,20 +206,20 @@ class GoogleDriveClient:
             "parents": [parent_id],
         }
 
+        def upload_blocking():
+            # Own http per upload: httplib2 is not thread-safe, and this runs off the event loop.
+            http = google_auth_httplib2.AuthorizedHttp(self.credentials, http=httplib2.Http())
+            media = MediaFileUpload(str(file_path), resumable=resumable, chunksize=settings.google_drive.chunk_size)
+            request = self.service.files().create(body=file_metadata, media_body=media, fields="id")
+            response = None
+            while response is None:
+                status, response = request.next_chunk(http=http)
+                if status and on_progress:
+                    on_progress(status.resumable_progress)
+            return response
+
         try:
-            # Use resumable upload for large files
-            media = MediaFileUpload(
-                str(file_path),
-                resumable=resumable,
-                chunksize=settings.google_drive.chunk_size,
-            )
-
-            file = (
-                self.service.files()
-                .create(body=file_metadata, media_body=media, fields="id")
-                .execute()
-            )
-
+            file = await asyncio.to_thread(upload_blocking)
             file_id = file.get("id")
             logger.info(f"Uploaded file '{file_path.name}' to Drive with ID: {file_id}")
             return file_id

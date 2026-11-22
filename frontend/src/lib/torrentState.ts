@@ -1,4 +1,4 @@
-import type { TorrentState } from '../types';
+import type { TorrentProgress, TorrentState } from '../types';
 
 export type Tone = 'accent' | 'info' | 'success' | 'warning' | 'danger' | 'neutral';
 
@@ -25,3 +25,13 @@ export const FILTERS: { id: TorrentFilter; label: string }[] = [
   { id: 'all', label: 'All' }, { id: 'active', label: 'Active' }, { id: 'done', label: 'On Drive' }, { id: 'failed', label: 'Failed' },
 ];
 export const matchesFilter = (state: TorrentState, f: TorrentFilter) => f === 'all' || GROUP[state] === f;
+
+// States the WebSocket streams live numbers for (backend/main.py broadcast_progress).
+export const isLive = (state: TorrentState) => state === 'downloading' || state === 'uploading';
+
+// While uploading the bar tracks bytes on Drive; download progress there is 100% (or a moving window when streaming).
+export function barPercent(state: TorrentState, p: Partial<TorrentProgress>) {
+  if (state === 'uploaded') return 100;
+  if (state === 'uploading') return p.total_size ? ((p.uploaded || 0) / p.total_size) * 100 : 0;
+  return p.progress || 0;
+}

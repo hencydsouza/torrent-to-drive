@@ -86,15 +86,14 @@ async def broadcast_progress():
                 torrents = await db.get_torrents_by_state(state)
 
                 for torrent in torrents:
-                    # Get live progress
-                    if state == TorrentState.DOWNLOADING:
-                        progress = await engine.get_progress(torrent.id)
-                        if progress:
-                            await manager.broadcast({
-                                "type": "progress",
-                                "torrent_id": torrent.id,
-                                "data": progress.dict(),
-                            })
+                    # Uploading too: streamed torrents sit in UPLOADING for the whole download
+                    progress = await engine.get_progress(torrent.id)
+                    if progress:
+                        await manager.broadcast({
+                            "type": "progress",
+                            "torrent_id": torrent.id,
+                            "data": progress.dict(),
+                        })
 
             await asyncio.sleep(1)  # Broadcast every 1 second for smoother updates
 

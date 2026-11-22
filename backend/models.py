@@ -43,6 +43,7 @@ class TorrentProgress(BaseModel):
     num_seeds: int = 0
     downloaded: int = 0
     total_size: int = 0
+    uploaded: int = 0  # bytes already on Drive
     eta: Optional[int] = None  # seconds
     error: Optional[str] = None
 

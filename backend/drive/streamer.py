@@ -70,8 +70,9 @@ class StreamState:
 
 class TorrentStreamer:
     def __init__(self, torrent_id: str, handle: lt.torrent_handle, download_path: Path,
-                 file_indices: Optional[list], cancel_event: asyncio.Event):
+                 file_indices: Optional[list], cancel_event: asyncio.Event, uploaded: Optional[dict] = None):
         self.torrent_id = torrent_id
+        self.uploaded = uploaded if uploaded is not None else {}  # shared torrent_id -> bytes on Drive
         self.handle = handle
         self.download_path = download_path
         self.cancel_event = cancel_event
@@ -81,6 +82,11 @@ class TorrentStreamer:
         self.selected = sorted(file_indices) if file_indices is not None else list(range(n))
         self.state = StreamState(download_path / ".stream.json")
         self._load_limits()
+
+    def _report_uploaded(self):
+        self.uploaded[self.torrent_id] = sum(
+            self.fs.file_size(i) if self.state.file(i)["done"] else self.state.file(i)["committed"]
+            for i in self.selected)
 
     def _load_limits(self):
         """Re-read buffer/chunk from settings so edits on the Settings page apply to the next chunk."""
@@ -148,6 +154,7 @@ class TorrentStreamer:
         root_id = await drive.get_or_create_folder(self.info.name(),
                                                        settings.google_drive.shared_folder_id)
         multi = self.fs.num_files() > 1
+        self._report_uploaded()  # resumed streams start from what .stream.json says is already on Drive
 
         for idx in self.selected:
             st = self.state.file(idx)
@@ -172,6 +179,7 @@ class TorrentStreamer:
 
             st["done"] = True
             self.state.save()
+            self._report_uploaded()
             local = self.download_path / rel
             if local.exists():
                 local.unlink()
@@ -254,6 +262,7 @@ class TorrentStreamer:
                 st["committed"] = committed
 
             self.state.save()
+            self._report_uploaded()
             if not punch_hole(local, st["committed"]) and st["committed"] < size:
                 logger.debug("[stream] hole punching unavailable; space freed when file completes")
 
@@ -275,7 +284,7 @@ async def stream_torrent(torrent_id: str, file_indices: Optional[list], cancel_e
     download_path = engine.get_download_path(torrent_id)
 
     await TorrentStreamer(torrent_id, engine.handles[torrent_id], download_path,
-                          file_indices, cancel_event).run(drive)
+                          file_indices, cancel_event, engine.uploaded).run(drive)
 
     await engine.remove_torrent(torrent_id)
     shutil.rmtree(download_path, ignore_errors=True)

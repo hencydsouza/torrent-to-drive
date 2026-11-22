@@ -1,17 +1,23 @@
 import Icon from '../ui/Icon';
 import IconButton from '../ui/IconButton';
-import { describeState } from '../../lib/torrentState';
+import { barPercent, describeState } from '../../lib/torrentState';
 import type { ActionKind } from '../../hooks/useTorrents';
 import type { TorrentInfo, TorrentProgress, TorrentState } from '../../types';
 import { formatBytes, formatDateTime, formatDuration, formatSpeed } from '../../lib/format';
 
 // Line 1 answers "is it OK?" (name + status). Line 2 is the phase-colored bar and live numbers.
 function liveDetail(state: TorrentState, p: Partial<TorrentProgress>) {
+  const onDrive = p.uploaded ? `${formatBytes(p.uploaded)} on Drive` : null;
   if (state === 'downloading') {
     const eta = formatDuration(p.eta);
-    return [`${formatSpeed(p.download_rate)} down`, `${p.num_peers || 0} peers`, eta && `${eta} left`].filter(Boolean).join(' · ');
+    return [`${formatBytes(p.downloaded)} of ${formatBytes(p.total_size)}`, `${formatSpeed(p.download_rate)} down`,
+      `${p.num_peers || 0} peers`, eta && `${eta} left`, onDrive].filter(Boolean).join(' · ');
   }
-  if (state === 'uploading') return 'Sending files to Drive';
+  if (state === 'uploading') {
+    // Streaming downloads while uploading, so show both sides.
+    return [`${formatBytes(p.uploaded)} of ${formatBytes(p.total_size)} on Drive`,
+      p.download_rate ? `${formatSpeed(p.download_rate)} down` : null].filter(Boolean).join(' · ');
+  }
   if (state === 'uploaded') return 'Done. Files are in your Drive folder';
   return null;
 }
@@ -29,7 +35,7 @@ export default function TorrentRow({ torrent, progress, busy, onPause, onResume,
   const { state } = torrent;
   const { label, tone } = describeState(state);
   const p: Partial<TorrentProgress> = progress ?? {};
-  const percent = state === 'uploaded' ? 100 : p.progress || 0;
+  const percent = barPercent(state, p);
   const name = torrent.metadata?.name;
   const detail = p.error || liveDetail(state, p);
 
