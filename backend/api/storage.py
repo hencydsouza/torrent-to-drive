@@ -1,4 +1,5 @@
 import logging
+from googleapiclient.errors import HttpError
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -17,12 +18,17 @@ class FolderCreate(BaseModel):
 
 
 async def _drive_call(what: str, fn, *args, **kwargs):
-    """Run a Drive call; not-connected/bad-input -> 400, anything else -> 500."""
+    """Run a Drive call; not-connected/bad-input -> 400, missing -> 404, other Drive errors -> 502."""
     try:
         drive = await get_drive_client()
         return await getattr(drive, fn)(*args, **kwargs)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(status_code=404, detail="Not found on Drive, or not created by this app")
+        logger.error(f"Error {what}: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.error(f"Error {what}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

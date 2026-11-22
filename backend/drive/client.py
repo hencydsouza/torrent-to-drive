@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 FILE_FIELDS = "id, name, size, mimeType, md5Checksum, createdTime, webViewLink, webContentLink"
 FOLDER_MIME = "application/vnd.google-apps.folder"
+DRIVE_TIMEOUT = 30  # seconds per Drive metadata call
 
 
 def to_drive_file(item: dict) -> DriveFile:
@@ -97,12 +98,20 @@ class GoogleDriveClient:
     async def account(self) -> Optional[str]:
         """Signed-in user's email, if Google shares it with this scope."""
         try:
-            about = await asyncio.to_thread(self.service.about().get(fields="user(emailAddress, displayName)").execute)
+            about = await self._run(self.service.about().get(fields="user(emailAddress, displayName)"))
             user = about.get("user", {})
             return user.get("emailAddress") or user.get("displayName")
         except Exception as e:
             logger.debug(f"about.get failed: {e}")
             return None
+
+    def _http(self, timeout=DRIVE_TIMEOUT):
+        # Own connection per call: httplib2 is not thread-safe, and a stale shared socket hung for 60s+.
+        return google_auth_httplib2.AuthorizedHttp(self.credentials, http=httplib2.Http(timeout=timeout))
+
+    async def _run(self, request):
+        """Execute a Drive API request off the event loop, so a slow call doesn't freeze the whole app."""
+        return await asyncio.to_thread(request.execute, http=self._http())
 
     async def list_files(self, folder_id: Optional[str] = None, page_size: int = 100,
                          all_pages: bool = False) -> List[DriveFile]:
@@ -118,7 +127,7 @@ class GoogleDriveClient:
             query = f"'{folder_id}' in parents and trashed=false"
             items, token = [], None
             while True:
-                results = (
+                results = await self._run(
                     self.service.files()
                     .list(
                         q=query,
@@ -127,7 +136,6 @@ class GoogleDriveClient:
                         fields=f"nextPageToken, files({FILE_FIELDS})",
                         orderBy="createdTime desc",
                     )
-                    .execute()
                 )
                 items += results.get("files", [])
                 token = results.get("nextPageToken")
@@ -182,7 +190,7 @@ class GoogleDriveClient:
         }
 
         try:
-            folder = self.service.files().create(body=file_metadata, fields="id").execute()
+            folder = await self._run(self.service.files().create(body=file_metadata, fields="id"))
             folder_id = folder.get("id")
             logger.info(f"Created folder '{name}' with ID: {folder_id}")
             return folder_id
@@ -220,7 +228,7 @@ class GoogleDriveClient:
 
         def upload_blocking():
             # Own http per upload: httplib2 is not thread-safe, and this runs off the event loop.
-            http = google_auth_httplib2.AuthorizedHttp(self.credentials, http=httplib2.Http())
+            http = self._http(timeout=None)  # sendall timeout covers a whole chunk; slow links need longer
             media = MediaFileUpload(str(file_path), resumable=resumable, chunksize=settings.google_drive.chunk_size)
             request = self.service.files().create(body=file_metadata, media_body=media, fields="id, md5Checksum")
             response = None
@@ -251,7 +259,7 @@ class GoogleDriveClient:
             await self.authenticate()
 
         try:
-            self.service.files().delete(fileId=file_id).execute()
+            await self._run(self.service.files().delete(fileId=file_id))
             logger.info(f"Deleted file with ID: {file_id}")
 
         except HttpError as e:
@@ -264,14 +272,7 @@ class GoogleDriveClient:
             await self.authenticate()
 
         try:
-            file = (
-                self.service.files()
-                .get(
-                    fileId=file_id,
-                    fields=FILE_FIELDS,
-                )
-                .execute()
-            )
+            file = await self._run(self.service.files().get(fileId=file_id, fields=FILE_FIELDS))
             return to_drive_file(file)
 
         except HttpError as e:

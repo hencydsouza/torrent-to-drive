@@ -44,13 +44,14 @@ interface NumberRowProps {
 }
 
 function useFolderName(id?: string) {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: keys.driveFile(id ?? ''),
     queryFn: () => storageAPI.getFile(id!),
     enabled: !!id && id !== 'root',
     retry: false,
   });
-  return id === 'root' ? 'My Drive' : (data?.name ?? id);
+  if (id === 'root') return 'My Drive';
+  return isError ? 'a missing folder, choose another' : (data?.name ?? 'your folder');
 }
 
 function NumberRow({ name, label, hint, value, onChange, disabled }: NumberRowProps) {
