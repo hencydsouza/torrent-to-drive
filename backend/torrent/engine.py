@@ -109,14 +109,16 @@ class TorrentEngine:
         params.save_path = "/tmp"  # Temporary path, won't download yet
         params.flags = lt.torrent_flags.upload_mode  # Metadata only
 
-        # Add torrent
+        # Add torrent. Same magnet already downloading -> libtorrent returns that live handle; never remove it.
         handle = self.session.add_torrent(params)
+        temporary = not any(handle == h for h in self.handles.values())
 
         # Wait for metadata
         start_time = asyncio.get_event_loop().time()
         while not handle.has_metadata():
             if asyncio.get_event_loop().time() - start_time > timeout:
-                self.session.remove_torrent(handle)
+                if temporary:
+                    self.session.remove_torrent(handle)
                 raise TimeoutError("Metadata fetch timed out")
 
             await asyncio.sleep(0.1)
@@ -147,8 +149,8 @@ class TorrentEngine:
             else:
                 trackers.append(t.url if hasattr(t, 'url') else str(t))
 
-        # Remove temporary torrent
-        self.session.remove_torrent(handle)
+        if temporary:
+            self.session.remove_torrent(handle)
 
         metadata = TorrentMetadata(
             name=info.name(),
@@ -270,6 +272,8 @@ class TorrentEngine:
         """Pause torrent download"""
         handle = self.handles.get(torrent_id)
         if handle and handle.is_valid():
+            # auto_managed torrents get restarted by libtorrent's queue; the worker does our queueing.
+            handle.unset_flags(lt.torrent_flags.auto_managed)
             handle.pause()
             logger.info(f"Torrent {torrent_id} paused")
             return True

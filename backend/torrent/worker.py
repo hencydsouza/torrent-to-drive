@@ -162,8 +162,13 @@ class TorrentWorker:
                 except asyncio.TimeoutError:
                     continue
 
-                # Skip if already active
-                if torrent_id in self.active_downloads:
+                # Already active. If that task is a paused one still winding down (a stream can be mid-PUT),
+                # retry later instead of dropping the resume, or the torrent sits "downloading" with no task.
+                active = self.active_downloads.get(torrent_id)
+                if active:
+                    if active.cancel_event.is_set():
+                        await self.queue.put((torrent_id, magnet_url, file_indices))
+                        await asyncio.sleep(1)
                     continue
 
                 # Create download task wrapper
@@ -192,7 +197,10 @@ class TorrentWorker:
             # Add to engine
             await engine.add_torrent(torrent_id, download.magnet_url, download.file_indices)
 
-            if settings.torrent.stream_to_drive:
+            # A torrent that already streamed keeps streaming: its hole-punched pieces still read as "have",
+            # so finishing it as a normal download would upload zeros.
+            streamed = (engine.get_download_path(torrent_id) / ".stream.json").exists()
+            if settings.torrent.stream_to_drive or streamed:
                 from backend.drive.streamer import stream_torrent
                 await stream_torrent(torrent_id, download.file_indices, download.cancel_event)
                 return

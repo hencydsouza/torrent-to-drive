@@ -36,7 +36,7 @@ export const toView = (api: AppSettings): SettingsDraft =>
     }),
   ) as SettingsDraft;
 
-export const toApi = (view: SettingsDraft): SettingsUpdate =>
+export const toApi = (view: Partial<SettingsDraft>): SettingsUpdate =>
   Object.fromEntries(
     Object.entries(view)
       .filter(([k]) => field(k) || k === 'stream_to_drive' || k === 'extra_trackers')

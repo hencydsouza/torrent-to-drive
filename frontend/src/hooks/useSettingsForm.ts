@@ -19,7 +19,8 @@ export function useSettingsForm() {
   const draft: SettingsDraft | null = saved && { ...saved, ...edits };
 
   const mutation = useMutation({
-    mutationFn: (values: SettingsDraft) => settingsAPI.update(toApi(values)),
+    // Only edited fields: untouched ones would round-trip through toView rounding, and env-locked ones 409.
+    mutationFn: (changed: Partial<SettingsDraft>) => settingsAPI.update(toApi(changed)),
     onSuccess: (data) => {
       qc.setQueryData(keys.settings, data);
       clear();
@@ -42,5 +43,5 @@ export function useSettingsForm() {
     if (!mutation.isPending) mutation.reset(); // clear the last save message once editing resumes
   };
 
-  return { saved, draft, dirty, set, save: () => draft && mutation.mutate(draft), discard: clear, status, loadStatus };
+  return { saved, draft, dirty, set, save: () => mutation.mutate(edits), discard: clear, status, loadStatus };
 }

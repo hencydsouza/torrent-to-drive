@@ -194,6 +194,10 @@ class TorrentStreamer:
         started = loop.time()
         seen = False
         while True:
+            if self.cancel_event.is_set():
+                raise asyncio.CancelledError()
+            if loop.time() - started > 600:
+                raise RuntimeError("recheck never started; refusing to stream unverified pieces")
             st = self.handle.status()
             if st.state in checking:
                 seen = True

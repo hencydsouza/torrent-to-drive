@@ -92,7 +92,8 @@ class GoogleDriveClient:
         self.service = build("drive", "v3", credentials=self.credentials)
         logger.info("Google Drive client authenticated successfully")
 
-    async def list_files(self, folder_id: Optional[str] = None, page_size: int = 100) -> List[DriveFile]:
+    async def list_files(self, folder_id: Optional[str] = None, page_size: int = 100,
+                         all_pages: bool = False) -> List[DriveFile]:
         """List files in the specified folder or shared folder"""
         if not self.service:
             await self.authenticate()
@@ -103,19 +104,26 @@ class GoogleDriveClient:
 
         try:
             query = f"'{folder_id}' in parents and trashed=false"
-            results = (
-                self.service.files()
-                .list(
-                    q=query,
-                    pageSize=page_size,
-                    fields="files(id, name, size, mimeType, createdTime, webViewLink, webContentLink)",
-                    orderBy="createdTime desc",
+            items, token = [], None
+            while True:
+                results = (
+                    self.service.files()
+                    .list(
+                        q=query,
+                        pageSize=page_size,
+                        pageToken=token,
+                        fields="nextPageToken, files(id, name, size, mimeType, createdTime, webViewLink, webContentLink)",
+                        orderBy="createdTime desc",
+                    )
+                    .execute()
                 )
-                .execute()
-            )
+                items += results.get("files", [])
+                token = results.get("nextPageToken")
+                if not (all_pages and token):
+                    break
 
             files = []
-            for item in results.get("files", []):
+            for item in items:
                 files.append(
                     DriveFile(
                         id=item["id"],
@@ -141,7 +149,7 @@ class GoogleDriveClient:
         try:
             return {
                 f.name: {"id": f.id, "size": f.size, "mime_type": f.mime_type, "is_folder": f.is_folder}
-                for f in await self.list_files(folder_id=folder_id, page_size=1000)
+                for f in await self.list_files(folder_id=folder_id, page_size=1000, all_pages=True)
             }
         except Exception as e:
             logger.warning(f"Error listing existing files: {e}")

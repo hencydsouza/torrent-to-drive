@@ -133,6 +133,10 @@ async def lifespan(app: FastAPI):
     await upload_worker.start()
     logger.info("Upload worker started")
 
+    # Downloaded but not yet on Drive when the server stopped: upload now (existing Drive files are skipped).
+    for t in await db.get_torrents_by_state(TorrentState.COMPLETED):
+        await upload_worker.add_upload(t.id)
+
     # Start progress broadcaster
     broadcaster_task = asyncio.create_task(broadcast_progress())
     logger.info("Progress broadcaster started")
@@ -218,8 +222,9 @@ if frontend_path.exists():
 
     @app.get("/{path:path}")
     async def serve_frontend_routes(path: str):
-        file_path = frontend_path / path
-        if file_path.exists() and file_path.is_file():
+        file_path = (frontend_path / path).resolve()
+        # Never serve outside dist/: "../../config/token.json" would leak the Drive login.
+        if file_path.is_relative_to(frontend_path.resolve()) and file_path.is_file():
             return FileResponse(str(file_path))
         return FileResponse(str(frontend_path / "index.html"))
 
