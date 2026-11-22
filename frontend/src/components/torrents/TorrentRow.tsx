@@ -52,7 +52,7 @@ export default function TorrentRow({ torrent, progress, busy, onPause, onResume,
       <td className="col-date cell-nowrap muted">{formatDateTime(torrent.created_at)}</td>
       <td className="col-actions">
         <div className="row-actions">
-          {state === 'downloading' && <IconButton icon="pause" label="Pause" busy={busy === 'pause'} disabled={!!busy} onClick={() => onPause(torrent.id)} />}
+          {(state === 'downloading' || state === 'uploading') && <IconButton icon="pause" label="Pause" busy={busy === 'pause'} disabled={!!busy} onClick={() => onPause(torrent.id)} />}
           {(state === 'paused' || state === 'metadata_ready') && (
             <IconButton icon="play" label={state === 'paused' ? 'Resume' : 'Start'} busy={busy === 'resume'} disabled={!!busy} onClick={() => onResume(torrent.id)} />
           )}

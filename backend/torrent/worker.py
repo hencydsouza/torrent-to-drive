@@ -108,7 +108,7 @@ class TorrentWorker:
             magnet_url = torrent.magnet_url
             file_indices = None
             if torrent.metadata and torrent.metadata.files:
-                file_indices = [f.index for f in torrent.metadata.files if f.selected]
+                file_indices = [f.index for f in torrent.metadata.files if f.selected] or None  # none saved = all
         
         # Re-add to queue
         await self.queue.put((torrent_id, magnet_url, file_indices))

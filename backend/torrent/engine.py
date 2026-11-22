@@ -186,8 +186,11 @@ class TorrentEngine:
         params = self._parse_magnet(magnet_url)
         params.save_path = str(download_path)
 
-        # Add torrent
-        handle = self.session.add_torrent(params)
+        handle = self.handles.get(torrent_id)
+        if handle and handle.is_valid():
+            handle.resume()  # paused earlier: reuse it so libtorrent keeps its piece state, no recheck
+        else:
+            handle = self.session.add_torrent(params)
 
         # Wait for metadata with timeout
         start_time = asyncio.get_event_loop().time()

@@ -114,6 +114,12 @@ async def lifespan(app: FastAPI):
     await db.init()
     logger.info("Database initialized")
 
+    # No task survives a restart or a move to another machine: show interrupted torrents as paused
+    # so Resume re-adds them (libtorrent rechecks files on disk, the streamer reloads .stream.json).
+    for state in (TorrentState.DOWNLOADING, TorrentState.UPLOADING):
+        for t in await db.get_torrents_by_state(state):
+            await db.update_torrent(t.id, state=TorrentState.PAUSED)
+
     # Start torrent engine
     engine = await get_engine()
     await engine.start()

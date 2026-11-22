@@ -88,6 +88,13 @@ async def start_download(torrent_id: str, request: TorrentDownloadRequest):
         if torrent.state not in [TorrentState.METADATA_READY, TorrentState.PAUSED]:
             raise HTTPException(status_code=400, detail=f"Cannot start download in state: {torrent.state}")
 
+        # Persist the selection: resume after a restart reads it back from the DB
+        if torrent.metadata:
+            chosen = request.file_indices
+            for f in torrent.metadata.files:
+                f.selected = chosen is None or f.index in chosen
+            await db.update_torrent(torrent_id, metadata=torrent.metadata)
+
         # Add to download queue
         await worker.add_download(
             torrent_id,
@@ -200,7 +207,8 @@ async def pause_torrent(torrent_id: str):
             raise HTTPException(status_code=404, detail="Torrent not found")
 
         # Signal worker to pause (this will stop the download task)
-        await worker.pause_download(torrent_id)
+        if not await worker.pause_download(torrent_id) and torrent.state == TorrentState.UPLOADING:
+            raise HTTPException(status_code=409, detail="Already downloaded, the Drive upload can't be paused")
         
         # Also pause in engine
         await engine.pause_torrent(torrent_id)
@@ -222,25 +230,17 @@ async def resume_torrent(torrent_id: str):
     """
     try:
         db = await get_db()
-        engine = await get_engine()
         worker = await get_torrent_worker()
 
         torrent = await db.get_torrent(torrent_id)
         if not torrent:
             raise HTTPException(status_code=404, detail="Torrent not found")
 
-        # Try to resume in engine first (if handle exists)
-        engine_resumed = await engine.resume_torrent(torrent_id)
-        
-        if engine_resumed:
-            # Handle exists in engine, just resume it
-            await db.update_torrent(torrent_id, state=TorrentState.DOWNLOADING)
-            return {"status": "resumed"}
-        else:
-            # Need to re-queue in worker
-            await worker.resume_download(torrent_id)
-            await db.update_torrent(torrent_id, state=TorrentState.DOWNLOADING)
-            return {"status": "requeued"}
+        # Always go through the worker: it owns the task that waits for completion / streams to Drive.
+        # Resuming only the libtorrent handle left nothing to upload once the download finished.
+        await worker.resume_download(torrent_id)
+        await db.update_torrent(torrent_id, state=TorrentState.DOWNLOADING)
+        return {"status": "resumed"}
 
     except HTTPException:
         raise
