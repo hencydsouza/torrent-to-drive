@@ -52,15 +52,30 @@ export default function FolderPicker() {
       <div className="dialog-body">
         <h2 id={titleId}>Choose upload folder</h2>
         <nav className="crumbs" aria-label="Folder path">
-          {pickerPath?.map((c, i) => (
-            <button key={c.id ?? 'root'} type="button" className="btn btn-ghost btn-small" disabled={i === pickerPath.length - 1} onClick={() => pickerGoTo(i)}>
-              {c.name}
-            </button>
-          ))}
+          <ol>
+            {pickerPath?.map((c, i) => (
+              <li key={c.id ?? 'root'}>
+                {i === pickerPath.length - 1 ? (
+                  <span className="crumb-current" aria-current="location">{c.name}</span>
+                ) : (
+                  <>
+                    <button type="button" className="crumb-link" onClick={() => pickerGoTo(i)}>{c.name}</button>
+                    <Icon name="chevron" />
+                  </>
+                )}
+              </li>
+            ))}
+          </ol>
         </nav>
         <ul className="folder-list" aria-busy={isPending}>
-          {isPending && <li className="muted">Loading folders…</li>}
-          {!isPending && !folders.length && <li className="muted">No folders here that this app created. Make one below.</li>}
+          {isPending && <li className="folder-note">Loading folders…</li>}
+          {!isPending && !folders.length && (
+            <li className="folder-note">
+              <Icon name="folder" />
+              <strong>No folders in here</strong>
+              <span>Only folders this app created are listed. Make one below, or upload here.</span>
+            </li>
+          )}
           {folders.map((f) => (
             <li key={f.id}>
               <button type="button" className="folder-item" onClick={() => pickerEnter({ id: f.id, name: f.name })}>
@@ -70,16 +85,16 @@ export default function FolderPicker() {
           ))}
         </ul>
         <form className="inline-form" onSubmit={onCreate}>
-          <input name="name" className="input" placeholder="New folder name" aria-label="New folder name" maxLength={200} />
+          <input name="name" className="input" placeholder={`New folder in ${current?.name ?? "My Drive"}`} aria-label="New folder name" maxLength={200} />
           <button type="submit" className="btn btn-secondary" disabled={create.isPending}>
-            <Icon name="plus" /> Create
+            <Icon name="plus" /> {create.isPending ? 'Creating…' : 'Create'}
           </button>
         </form>
         {failure && <p className="status error" role="alert">{failure}</p>}
         <div className="dialog-actions">
           <button type="button" className="btn btn-ghost" onClick={closePicker}>Cancel</button>
           <button type="button" className="btn btn-primary" disabled={choose.isPending} onClick={() => choose.mutate()}>
-            Upload to “{current?.name}”
+            {choose.isPending ? 'Saving…' : `Upload to ${current?.name ?? 'My Drive'}`}
           </button>
         </div>
       </div>
