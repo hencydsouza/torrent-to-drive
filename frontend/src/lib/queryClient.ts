@@ -9,6 +9,7 @@ export const keys = {
   torrents: ['torrents'],
   progress: ['torrents', 'progress'],
   stats: ['torrents', 'stats'],
+  files: (torrentId: string) => ['torrents', 'files', torrentId] as const,
   driveFiles: (folderId?: string) => ['drive', 'files', folderId ?? 'root'] as const,
   driveHealth: ['drive', 'health'],
   settings: ['settings'],

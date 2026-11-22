@@ -7,6 +7,7 @@ export type TorrentInfo = Schemas['TorrentInfo'];
 export type TorrentMetadata = Schemas['TorrentMetadata'];
 export type TorrentProgress = Schemas['TorrentProgress'];
 export type FileInfo = Schemas['FileInfo'];
+export type FileProgress = Schemas['FileProgress'];
 export type DriveFile = Schemas['DriveFile'];
 export type DriveHealth = Schemas['DriveHealth'];
 export type ServerStats = Schemas['ServerStats'];

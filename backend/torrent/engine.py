@@ -25,6 +25,7 @@ class TorrentEngine:
         self._progress_callbacks: Dict[str, List[Callable]] = {}
         self.selected: Dict[str, Optional[List[int]]] = {}  # torrent_id -> chosen file indices (None = all)
         self.uploaded: Dict[str, int] = {}  # torrent_id -> bytes already on Drive, set by the uploaders
+        self.file_uploaded: Dict[str, int] = {}  # absolute local file path -> bytes of it on Drive
 
     async def start(self):
         """Initialize libtorrent session"""
@@ -306,6 +307,20 @@ class TorrentEngine:
             status = handle.status()
             return status.is_seeding or status.progress >= 1.0
         return False
+
+    def file_progress(self, torrent_id: str) -> Optional[List[dict]]:
+        """Per-file sizes and bytes downloaded / on Drive; None when the torrent has no live handle."""
+        handle = self.handles.get(torrent_id)
+        if not (handle and handle.is_valid() and handle.has_metadata()):
+            return None
+        fs = handle.torrent_file().files()
+        done = handle.file_progress(lt.torrent_handle.piece_granularity)
+        prio = handle.get_file_priorities()
+        root = self.get_download_path(torrent_id)
+        return [{
+            "index": i, "path": fs.file_path(i), "size": fs.file_size(i), "selected": prio[i] > 0,
+            "downloaded": done[i], "uploaded": self.file_uploaded.get(str(root / fs.file_path(i)), 0),
+        } for i in range(fs.num_files())]
 
     def get_download_path(self, torrent_id: str) -> Optional[Path]:
         """Get download path for completed torrent"""

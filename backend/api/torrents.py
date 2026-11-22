@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from backend.models import (
     TorrentRequest,
     TorrentDownloadRequest,
+    FileProgress,
     TorrentInfo,
     TorrentMetadata,
     TorrentProgress,
@@ -150,6 +151,29 @@ async def get_torrent(torrent_id: str):
     except Exception as e:
         logger.error(f"Error getting torrent: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{torrent_id}/files", response_model=List[FileProgress])
+async def get_file_progress(torrent_id: str):
+    """Per-file size, download and Drive upload progress."""
+    engine = await get_engine()
+    live = engine.file_progress(torrent_id)
+    if live is not None:
+        return live
+    torrent = await (await get_db()).get_torrent(torrent_id)
+    if not torrent:
+        raise HTTPException(status_code=404, detail="Torrent not found")
+    if not torrent.metadata:
+        return []
+    # No live handle (finished, paused before restart, ...): estimate from the saved state.
+    downloaded_all = torrent.state in (TorrentState.COMPLETED, TorrentState.UPLOADING, TorrentState.UPLOADED)
+    root = engine.get_download_path(torrent_id)
+    return [FileProgress(
+        **f.model_dump(),
+        downloaded=f.size if downloaded_all and f.selected else 0,
+        uploaded=f.size if torrent.state == TorrentState.UPLOADED and f.selected
+        else engine.file_uploaded.get(str(root / f.path), 0),
+    ) for f in torrent.metadata.files]
 
 
 @router.get("/{torrent_id}/progress", response_model=TorrentProgress)

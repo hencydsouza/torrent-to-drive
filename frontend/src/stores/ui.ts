@@ -10,10 +10,12 @@ export interface Crumb {
 interface UiState {
   filter: TorrentFilter;
   pendingDelete: TorrentInfo | null;
+  expandedId: string | null; // torrent whose file list is open
   drivePath: Crumb[];
   driveSearch: string;
   setFilter: (filter: TorrentFilter) => void;
   setPendingDelete: (torrent: TorrentInfo | null) => void;
+  toggleExpanded: (id: string) => void;
   openFolder: (crumb: Crumb) => void;
   goToCrumb: (index: number) => void;
   setDriveSearch: (q: string) => void;
@@ -23,10 +25,12 @@ interface UiState {
 export const useUi = create<UiState>()((set) => ({
   filter: 'all',
   pendingDelete: null,
+  expandedId: null,
   drivePath: [{ name: 'Drive folder' }],
   driveSearch: '',
   setFilter: (filter) => set({ filter }),
   setPendingDelete: (pendingDelete) => set({ pendingDelete }),
+  toggleExpanded: (id) => set((s) => ({ expandedId: s.expandedId === id ? null : id })),
   openFolder: (crumb) => set((s) => ({ drivePath: [...s.drivePath, crumb], driveSearch: '' })),
   goToCrumb: (index) => set((s) => ({ drivePath: s.drivePath.slice(0, index + 1), driveSearch: '' })),
   setDriveSearch: (driveSearch) => set({ driveSearch }),

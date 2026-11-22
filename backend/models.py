@@ -22,6 +22,11 @@ class FileInfo(BaseModel):
     selected: bool = False
 
 
+class FileProgress(FileInfo):
+    downloaded: int = 0
+    uploaded: int = 0  # bytes of this file already on Drive
+
+
 class TorrentMetadata(BaseModel):
     name: str
     total_size: int

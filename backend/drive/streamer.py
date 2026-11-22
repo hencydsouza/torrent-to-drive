@@ -70,9 +70,11 @@ class StreamState:
 
 class TorrentStreamer:
     def __init__(self, torrent_id: str, handle: lt.torrent_handle, download_path: Path,
-                 file_indices: Optional[list], cancel_event: asyncio.Event, uploaded: Optional[dict] = None):
+                 file_indices: Optional[list], cancel_event: asyncio.Event, uploaded: Optional[dict] = None,
+                 file_uploaded: Optional[dict] = None):
         self.torrent_id = torrent_id
         self.uploaded = uploaded if uploaded is not None else {}  # shared torrent_id -> bytes on Drive
+        self.file_uploaded = file_uploaded if file_uploaded is not None else {}  # shared local path -> bytes
         self.handle = handle
         self.download_path = download_path
         self.cancel_event = cancel_event
@@ -84,9 +86,12 @@ class TorrentStreamer:
         self._load_limits()
 
     def _report_uploaded(self):
+        for i in self.selected:
+            st = self.state.file(i)
+            self.file_uploaded[str(self.download_path / self.fs.file_path(i))] = \
+                self.fs.file_size(i) if st["done"] else st["committed"]
         self.uploaded[self.torrent_id] = sum(
-            self.fs.file_size(i) if self.state.file(i)["done"] else self.state.file(i)["committed"]
-            for i in self.selected)
+            self.file_uploaded[str(self.download_path / self.fs.file_path(i))] for i in self.selected)
 
     def _load_limits(self):
         """Re-read buffer/chunk from settings so edits on the Settings page apply to the next chunk."""
@@ -288,7 +293,7 @@ async def stream_torrent(torrent_id: str, file_indices: Optional[list], cancel_e
     download_path = engine.get_download_path(torrent_id)
 
     await TorrentStreamer(torrent_id, engine.handles[torrent_id], download_path,
-                          file_indices, cancel_event, engine.uploaded).run(drive)
+                          file_indices, cancel_event, engine.uploaded, engine.file_uploaded).run(drive)
 
     await engine.remove_torrent(torrent_id)
     shutil.rmtree(download_path, ignore_errors=True)

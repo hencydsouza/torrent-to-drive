@@ -92,6 +92,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/torrents/{torrent_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get File Progress
+         * @description Per-file size, download and Drive upload progress.
+         */
+        get: operations["get_file_progress_api_torrents__torrent_id__files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/torrents/{torrent_id}/progress": {
         parameters: {
             query?: never;
@@ -383,6 +403,30 @@ export interface components {
              * @default false
              */
             selected: boolean;
+        };
+        /** FileProgress */
+        FileProgress: {
+            /** Index */
+            index: number;
+            /** Path */
+            path: string;
+            /** Size */
+            size: number;
+            /**
+             * Selected
+             * @default false
+             */
+            selected: boolean;
+            /**
+             * Downloaded
+             * @default 0
+             */
+            downloaded: number;
+            /**
+             * Uploaded
+             * @default 0
+             */
+            uploaded: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -755,6 +799,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_file_progress_api_torrents__torrent_id__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                torrent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileProgress"][];
                 };
             };
             /** @description Validation Error */

@@ -41,6 +41,8 @@ export const torrentAPI = {
   getTorrent: (torrentId: string) => unwrap(client.GET('/api/torrents/{torrent_id}', torrentPath(torrentId)), 'Could not load torrent'),
   getProgress: (torrentId: string) =>
     unwrap(client.GET('/api/torrents/{torrent_id}/progress', torrentPath(torrentId)), 'Could not load progress'),
+  getFiles: (torrentId: string) =>
+    unwrap(client.GET('/api/torrents/{torrent_id}/files', torrentPath(torrentId)), 'Could not load files'),
   pauseTorrent: (torrentId: string) => unwrap(client.POST('/api/torrents/{torrent_id}/pause', torrentPath(torrentId)), 'Could not pause'),
   resumeTorrent: (torrentId: string) => unwrap(client.POST('/api/torrents/{torrent_id}/resume', torrentPath(torrentId)), 'Could not resume'),
   deleteTorrent: (torrentId: string, deleteFiles = false) =>

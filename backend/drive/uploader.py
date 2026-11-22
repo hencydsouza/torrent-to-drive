@@ -153,7 +153,7 @@ class UploadWorker:
                         drive.upload_file,
                         file_path,
                         parent_id=root_folder_id,
-                        on_progress=self._progress_reporter(engine, torrent_id, stats),
+                        on_progress=self._progress_reporter(engine, torrent_id, stats, file_path),
                     )
                     self._count_done(engine, torrent_id, stats, file_path)
                     stats['uploaded'] += 1
@@ -235,7 +235,7 @@ class UploadWorker:
                             drive.upload_file,
                             item,
                             parent_id=parent_id,
-                            on_progress=self._progress_reporter(engine, torrent_id, stats),
+                            on_progress=self._progress_reporter(engine, torrent_id, stats, item),
                         )
                         self._count_done(engine, torrent_id, stats, item)
                         stats['uploaded'] += 1
@@ -265,13 +265,17 @@ class UploadWorker:
                 stats['failed'] += 1
 
     @staticmethod
-    def _progress_reporter(engine, torrent_id: str, stats: Dict):
+    def _progress_reporter(engine, torrent_id: str, stats: Dict, path: Path):
         # Bytes on Drive = finished files + how far the current file's resumable upload got.
-        return lambda sent: engine.uploaded.__setitem__(torrent_id, stats['bytes'] + sent)
+        def report(sent: int):
+            engine.file_uploaded[str(path)] = sent
+            engine.uploaded[torrent_id] = stats['bytes'] + sent
+        return report
 
     @staticmethod
     def _count_done(engine, torrent_id: str, stats: Dict, path: Path):
         stats['bytes'] += path.stat().st_size
+        engine.file_uploaded[str(path)] = path.stat().st_size
         engine.uploaded[torrent_id] = stats['bytes']
 
     async def _cleanup_local_files(self, path: Path):
