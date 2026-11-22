@@ -12,7 +12,7 @@ from backend.config import settings
 from backend.database import get_db
 from backend.torrent import get_engine, get_torrent_worker
 from backend.drive import get_upload_worker
-from backend.api import torrents_router, storage_router, settings_router
+from backend.api import torrents_router, storage_router, settings_router, auth_router
 from backend.models import TorrentState, ServerStats
 
 # Configure logging
@@ -175,6 +175,7 @@ app.add_middleware(
 app.include_router(torrents_router)
 app.include_router(storage_router)
 app.include_router(settings_router)
+app.include_router(auth_router)
 
 
 # WebSocket endpoint for real-time updates

@@ -5,6 +5,7 @@ Peak local disk ~= stream_buffer_mb (plus filesystem slack), not torrent size.
 """
 import asyncio
 import ctypes
+import hashlib
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ from backend.drive.client import with_retry
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id"
+UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,md5Checksum"
 DRIVE_ALIGN = 256 * 1024  # Drive resumable chunks must be multiples of 256 KiB
 
 try:
@@ -71,10 +72,11 @@ class StreamState:
 class TorrentStreamer:
     def __init__(self, torrent_id: str, handle: lt.torrent_handle, download_path: Path,
                  file_indices: Optional[list], cancel_event: asyncio.Event, uploaded: Optional[dict] = None,
-                 file_uploaded: Optional[dict] = None):
+                 file_uploaded: Optional[dict] = None, file_verified: Optional[set] = None):
         self.torrent_id = torrent_id
         self.uploaded = uploaded if uploaded is not None else {}  # shared torrent_id -> bytes on Drive
         self.file_uploaded = file_uploaded if file_uploaded is not None else {}  # shared local path -> bytes
+        self.file_verified = file_verified if file_verified is not None else set()  # shared local paths
         self.handle = handle
         self.download_path = download_path
         self.cancel_event = cancel_event
@@ -234,6 +236,11 @@ class TorrentStreamer:
             st["committed"] = 0
         self.state.save()
 
+        # MD5 of what Drive has committed, compared with Drive's md5Checksum at the end. Only possible when
+        # this run uploaded the file from byte 0 (hash state isn't saved across restarts).
+        md5, hashed = (hashlib.md5(), 0) if st["committed"] == 0 else (None, 0)
+        final = None
+
         while st["committed"] < size:
             if self.cancel_event.is_set():
                 raise asyncio.CancelledError()
@@ -254,11 +261,15 @@ class TorrentStreamer:
                 })
                 if r.status_code in (200, 201):
                     st["committed"] = size
+                    final = r.json()
                 elif r.status_code == 308:
                     st["committed"] = parse_committed(r.headers.get("Range"))
                 else:
                     r.raise_for_status()
                 failures = 0
+                if md5 and hashed == offset and st["committed"] >= offset:
+                    md5.update(data[:st["committed"] - offset])
+                    hashed = st["committed"]
             except Exception as e:
                 failures += 1
                 if failures > settings.google_drive.max_retries:
@@ -269,13 +280,26 @@ class TorrentStreamer:
                 if committed is None:
                     raise RuntimeError(f"Drive session for {name} expired mid-upload")
                 st["committed"] = committed
+                if md5 and committed != hashed:
+                    md5 = None  # Drive's view moved away from what we hashed; can't verify this file
 
             self.state.save()
             self._report_uploaded()
             if not punch_hole(local, st["committed"]) and st["committed"] < size:
                 logger.debug("[stream] hole punching unavailable; space freed when file completes")
 
-        logger.info(f"[stream] uploaded {name} ({size} bytes)")
+        remote = (final or {}).get("md5Checksum")
+        if md5 and remote:
+            if md5.hexdigest() != remote:
+                # Delete it so a retry re-uploads instead of skipping a same-size corrupt copy
+                await self._http("DELETE", f"https://www.googleapis.com/drive/v3/files/{final['id']}")
+                st.update(session=None, committed=0)
+                self.state.save()
+                raise RuntimeError(f"Checksum mismatch after streaming {name} (local {md5.hexdigest()}, Drive {remote})")
+            self.file_verified.add(str(local))
+            logger.info(f"[stream] uploaded and verified {name} ({size} bytes, md5 {remote})")
+        else:
+            logger.info(f"[stream] uploaded {name} ({size} bytes; pieces SHA-checked, MD5 not compared after resume)")
 
 
 def _read(path: Path, offset: int, n: int) -> bytes:
@@ -293,7 +317,8 @@ async def stream_torrent(torrent_id: str, file_indices: Optional[list], cancel_e
     download_path = engine.get_download_path(torrent_id)
 
     await TorrentStreamer(torrent_id, engine.handles[torrent_id], download_path,
-                          file_indices, cancel_event, engine.uploaded, engine.file_uploaded).run(drive)
+                          file_indices, cancel_event, engine.uploaded, engine.file_uploaded,
+                          engine.file_verified).run(drive)
 
     await engine.remove_torrent(torrent_id)
     shutil.rmtree(download_path, ignore_errors=True)

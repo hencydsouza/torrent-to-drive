@@ -34,7 +34,31 @@ Paste a magnet link, pick the files you want, and they end up in your Google Dri
 
 ## Option 2: Docker (recommended)
 
-### 1. Get Google credentials (one time)
+### 1. Start
+
+No clone needed. Make a folder and save this as `docker-compose.yml` in it:
+
+```yaml
+services:
+  torrent-to-drive:
+    image: ghcr.io/hencydsouza/torrent-to-drive:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config   # Google login + settings
+      - ./data:/app/data       # downloads, deleted after upload
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+```
+
+Open **http://localhost:8000**. The image runs as user 1000. On Linux, if the logs show permission errors, run `sudo chown -R 1000:1000 config data`.
+
+Working from a clone instead? `docker compose up -d --build` builds the image from source.
+
+### 2. Get a Google OAuth client (one time)
 
 You need a Google OAuth client so the app can upload to your Drive.
 
@@ -42,37 +66,23 @@ You need a Google OAuth client so the app can upload to your Drive.
 2. **APIs & Services → Library**: search for **Google Drive API** and click **Enable**.
 3. **APIs & Services → OAuth consent screen**: choose **External**, fill in the required fields, and add your own email under **Test users**.
 4. **APIs & Services → Credentials → Create credentials → OAuth client ID**. Choose **Desktop app** as the type.
-5. Download the JSON file and save it as `config/credentials.json` in this repo.
+5. Download the JSON file.
 
-### 2. Configure
+### 3. Connect Google Drive in the app
 
-```bash
-git clone https://github.com/hencydsouza/torrent-to-drive.git
-cd torrent-to-drive
-cp .env.example .env
-```
+Go to **Settings → Google account**:
 
-In `.env`, set `DRIVE_FOLDER_ID=root` to upload to My Drive, or put in a folder ID. Each torrent gets its own subfolder inside it.
+1. **Upload client file**: pick the JSON file you downloaded.
+2. **Sign in with Google** and approve access.
+3. If you opened the app at `localhost`, you land back on Settings, connected. From another machine, the browser ends on a page that won't load. Copy that page's full address, paste it into the box on Settings, and press **Finish**.
 
-### 3. Sign in to Google (one time)
+Then **Drive upload → Change folder** picks where torrents go: My Drive or a folder you create there. Each torrent gets its own subfolder.
 
-```bash
-docker compose run --rm -p 8765:8765 torrent-to-drive python -m backend.drive.client
-```
+Everything is saved in `config/`, so it survives updates and restarts.
 
-This prints a link. Open it in your browser, sign in, and approve access. The login is saved to `config/token.json`, so you only do this once.
-
-### 4. Start
-
-```bash
-docker compose up -d --build
-```
-
-Open **http://localhost:8000**, or `http://<server-ip>:8000` from another machine.
-
-- **Update after pulling new code:** `docker compose up -d --build`
-- **After editing `.env`:** `docker compose up -d`. No rebuild needed.
+- **Update:** `docker compose pull && docker compose up -d`
 - **Logs:** `docker compose logs -f`
+- **Older setups:** `DRIVE_FOLDER_ID` in `.env` still works. It's only used when no folder was picked on the Settings page. An existing `config/token.json` keeps working too.
 
 ---
 
@@ -82,11 +92,10 @@ On Debian or Ubuntu:
 
 ```bash
 ./setup.sh                          # installs libtorrent, Python packages, builds the UI
-python -m backend.drive.client      # one-time Google sign-in (same as Docker step 3)
 ./start.sh                          # runs the app on port 8000
 ```
 
-First follow [step 1](#1-get-google-credentials-one-time) and [step 2](#2-configure) from the Docker section. `ecosystem.config.js` lets you run it under PM2 so it stays up.
+Then connect Google Drive on the Settings page, as in [Docker steps 2 and 3](#2-get-a-google-oauth-client-one-time). `ecosystem.config.js` lets you run it under PM2 so it stays up.
 
 ---
 
@@ -139,7 +148,7 @@ Open the folder in Drive. The ID is the last part of the URL: `drive.google.com/
 
 | Problem | Fix |
 |---|---|
-| "Not authenticated" or Drive shows disconnected | Do the [one-time sign-in](#3-sign-in-to-google-one-time) again. If it still fails, delete `config/token.json` first. |
+| "Not authenticated" or Drive shows disconnected | Sign in again under **Settings → Google account**. If it still fails, delete `config/token.json` first. |
 | Google says "access blocked" or "app not verified" | Add your email under **Test users** on the OAuth consent screen. |
 | Download is slow or stuck at 0 | Add trackers in Settings and check that the torrent has seeders. On a cloud VM, check the firewall allows outgoing traffic. |
 | Disk fills up | Turn on **Stream to Drive**, or lower the stream buffer. |

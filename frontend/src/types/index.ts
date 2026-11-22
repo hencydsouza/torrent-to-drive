@@ -13,6 +13,10 @@ export type DriveHealth = Schemas['DriveHealth'];
 export type ServerStats = Schemas['ServerStats'];
 export type AppSettings = Schemas['AppSettings'];
 export type SettingsUpdate = Schemas['SettingsUpdate'];
+export type AuthStatus = Schemas['AuthStatus'];
+export type TorrentDetails = Schemas['TorrentDetails'];
+export type PeerInfo = Schemas['PeerInfo'];
+export type TrackerInfo = Schemas['TrackerInfo'];
 
 // Messages pushed on /ws by backend/main.py broadcast_progress (not part of OpenAPI).
 export type WsMessage =

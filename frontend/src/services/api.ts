@@ -43,6 +43,8 @@ export const torrentAPI = {
     unwrap(client.GET('/api/torrents/{torrent_id}/progress', torrentPath(torrentId)), 'Could not load progress'),
   getFiles: (torrentId: string) =>
     unwrap(client.GET('/api/torrents/{torrent_id}/files', torrentPath(torrentId)), 'Could not load files'),
+  getDetails: (torrentId: string) =>
+    unwrap(client.GET('/api/torrents/{torrent_id}/details', torrentPath(torrentId)), 'Could not load details'),
   pauseTorrent: (torrentId: string) => unwrap(client.POST('/api/torrents/{torrent_id}/pause', torrentPath(torrentId)), 'Could not pause'),
   resumeTorrent: (torrentId: string) => unwrap(client.POST('/api/torrents/{torrent_id}/resume', torrentPath(torrentId)), 'Could not resume'),
   deleteTorrent: (torrentId: string, deleteFiles = false) =>
@@ -61,6 +63,17 @@ export const storageAPI = {
   getFile: (fileId: string) =>
     unwrap(client.GET('/api/storage/files/{file_id}', { params: { path: { file_id: fileId } } }), 'Could not load file'),
   checkHealth: () => unwrap(client.GET('/api/storage/health'), 'Drive health check failed'),
+  createFolder: (name: string, parentId?: string) =>
+    unwrap(client.POST('/api/storage/folders', { body: { name, parent_id: parentId } }), 'Could not create folder'),
+};
+
+export const authAPI = {
+  status: () => unwrap(client.GET('/api/auth/status'), 'Could not check Google sign-in'),
+  uploadClient: (clientJson: string) =>
+    unwrap(client.PUT('/api/auth/client', { body: { client_json: clientJson } }), 'Could not save the OAuth client'),
+  login: () => unwrap(client.POST('/api/auth/login'), 'Could not start sign-in') as Promise<{ url: string }>,
+  finish: (url: string) => unwrap(client.POST('/api/auth/finish', { body: { url } }), 'Could not finish sign-in'),
+  logout: () => unwrap(client.POST('/api/auth/logout'), 'Could not sign out'),
 };
 
 export const settingsAPI = {

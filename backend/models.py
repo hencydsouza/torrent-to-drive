@@ -25,6 +25,7 @@ class FileInfo(BaseModel):
 class FileProgress(FileInfo):
     downloaded: int = 0
     uploaded: int = 0  # bytes of this file already on Drive
+    verified: bool = False  # Drive's MD5 matched the local file after upload
 
 
 class TorrentMetadata(BaseModel):
@@ -67,6 +68,7 @@ class DriveFile(BaseModel):
     name: str
     size: int
     mime_type: str
+    md5_checksum: Optional[str] = None
     created_time: datetime
     web_view_link: Optional[str] = None
     web_content_link: Optional[str] = None
@@ -109,6 +111,49 @@ class AppSettings(BaseModel):
     chunk_size: int
     max_retries: int
     extra_trackers: List[str] = []
-    drive_folder_id: Optional[str] = None
+    shared_folder_id: str
     env_locked: List[str] = []
+
+
+class AuthStatus(BaseModel):
+    mode: str  # "oauth" (own OAuth client) | "adc" (Colab login)
+    has_client: bool  # OAuth client JSON uploaded
+    connected: bool
+    account: Optional[str] = None
+    redirect_uri: Optional[str] = None  # add this to a Web-type OAuth client
+    error: Optional[str] = None
+
+
+class PeerInfo(BaseModel):
+    address: str
+    client: str
+    progress: float  # 0-100
+    download_rate: int
+    upload_rate: int
+    seed: bool
+
+
+class TrackerInfo(BaseModel):
+    url: str
+    tier: int
+    status: str  # "working" | "error" | "updating" | "not contacted"
+    message: Optional[str] = None
+    peers: Optional[int] = None
+
+
+class TorrentDetails(BaseModel):
+    progress: TorrentProgress
+    info_hash: str
+    save_path: str
+    piece_size: int
+    pieces: str  # one char per piece: h=have, d=downloading, w=wanted, s=skipped
+    availability: float  # distributed copies among connected peers
+    all_time_download: int
+    all_time_upload: int
+    wasted: int  # bytes that failed hash checks or arrived twice
+    active_seconds: int
+    sequential: bool
+    connections: int
+    peers: List[PeerInfo]
+    trackers: List[TrackerInfo]
 

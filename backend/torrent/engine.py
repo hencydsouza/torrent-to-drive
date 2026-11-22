@@ -9,6 +9,7 @@ from backend.models import (
     TorrentProgress,
     TorrentState,
     FileInfo,
+    TorrentDetails,
 )
 from backend.config import settings
 
@@ -26,6 +27,7 @@ class TorrentEngine:
         self.selected: Dict[str, Optional[List[int]]] = {}  # torrent_id -> chosen file indices (None = all)
         self.uploaded: Dict[str, int] = {}  # torrent_id -> bytes already on Drive, set by the uploaders
         self.file_uploaded: Dict[str, int] = {}  # absolute local file path -> bytes of it on Drive
+        self.file_verified: set = set()  # absolute local file paths whose Drive MD5 matched
 
     async def start(self):
         """Initialize libtorrent session"""
@@ -320,7 +322,44 @@ class TorrentEngine:
         return [{
             "index": i, "path": fs.file_path(i), "size": fs.file_size(i), "selected": prio[i] > 0,
             "downloaded": done[i], "uploaded": self.file_uploaded.get(str(root / fs.file_path(i)), 0),
+            "verified": str(root / fs.file_path(i)) in self.file_verified,
         } for i in range(fs.num_files())]
+
+    async def details(self, torrent_id: str) -> Optional[TorrentDetails]:
+        """Piece map, peers and trackers; None when the torrent has no live handle."""
+        handle = self.handles.get(torrent_id)
+        if not (handle and handle.is_valid() and handle.has_metadata()):
+            return None
+        s = handle.status(lt.torrent_handle.query_pieces | lt.torrent_handle.query_distributed_copies)
+        ti = handle.torrent_file()
+        prio = handle.get_piece_priorities()
+        busy = {p["piece_index"] for p in handle.get_download_queue()}
+        pieces = "".join("h" if have else "d" if i in busy else "w" if prio[i] else "s"
+                         for i, have in enumerate(s.pieces))
+        peers = sorted(handle.get_peer_info(), key=lambda p: p.down_speed, reverse=True)[:100]
+        return TorrentDetails(
+            progress=await self.get_progress(torrent_id),
+            info_hash=str(s.info_hash),
+            save_path=s.save_path,
+            piece_size=ti.piece_length(),
+            pieces=pieces,
+            availability=max(s.distributed_copies, 0),
+            all_time_download=s.all_time_download,
+            all_time_upload=s.all_time_upload,
+            wasted=s.total_failed_bytes + s.total_redundant_bytes,
+            active_seconds=int(s.active_duration.total_seconds()),
+            sequential=bool(s.flags & lt.torrent_flags.sequential_download),
+            connections=s.num_connections,
+            peers=[{
+                "address": f"{p.ip[0]}:{p.ip[1]}",
+                "client": p.client.decode(errors="replace") if isinstance(p.client, bytes) else str(p.client),
+                "progress": p.progress * 100,
+                "download_rate": p.down_speed,
+                "upload_rate": p.up_speed,
+                "seed": bool(p.flags & lt.peer_info.seed),
+            } for p in peers],
+            trackers=[_tracker(t) for t in handle.trackers()],
+        )
 
     def get_download_path(self, torrent_id: str) -> Optional[Path]:
         """Get download path for completed torrent"""
@@ -367,6 +406,28 @@ class TorrentEngine:
 
 
 # Global engine instance
+def _tracker(t: dict) -> dict:
+    """libtorrent announce_entry dict -> TrackerInfo fields (status from its endpoints)."""
+    eps = t.get("endpoints") or []
+    hashes = [ih for ep in eps for ih in (ep.get("info_hashes") or [ep])]  # 2.0 nests per-protocol state
+    msg = next((ih.get("message") for ih in hashes if ih.get("message")), None)
+    if not msg:  # libtorrent often leaves message empty and only sets an error code
+        err = next((ih["last_error"] for ih in hashes if ih.get("fails") and ih.get("last_error")), None)
+        msg = f"{err['category']} error {err['value']}" if err else None
+    if any(ih.get("updating") for ih in hashes):
+        status = "updating"
+    elif any(ih.get("fails") for ih in hashes):
+        status = "error"
+    elif any(ih.get("start_sent") for ih in hashes):
+        status = "working"
+    else:
+        status = "not contacted"
+    scraped = [ih.get("scrape_complete", -1) + max(ih.get("scrape_incomplete", -1), 0) for ih in hashes
+               if ih.get("scrape_complete", -1) >= 0]
+    return {"url": t["url"], "tier": t.get("tier", 0), "status": status, "message": msg,
+            "peers": max(scraped) if scraped else None}
+
+
 engine: Optional[TorrentEngine] = None
 
 

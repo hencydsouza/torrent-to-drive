@@ -27,7 +27,7 @@ class TorrentConfig(BaseModel):
 class GoogleDriveConfig(BaseModel):
     credentials_file: str = "./config/credentials.json"
     token_file: str = "./config/token.json"
-    shared_folder_id: str = ""
+    shared_folder_id: str = "root"  # Drive folder ID; "root" = My Drive
     chunk_size: int = 10485760
     max_retries: int = 5
 
@@ -41,8 +41,15 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
-# torrent.<key> -> env var that overrides it (settings API refuses to edit these while set)
-ENV_OVERRIDES = {"stream_to_drive": "STREAM_TO_DRIVE", "stream_buffer_mb": "STREAM_BUFFER_MB"}
+# (section, key) -> env var that overrides it; the settings API refuses to edit these while set
+ENV_OVERRIDES = {
+    ("torrent", "stream_to_drive"): "STREAM_TO_DRIVE",
+    ("torrent", "stream_buffer_mb"): "STREAM_BUFFER_MB",
+}
+
+
+def env_override(env: str) -> Optional[str]:
+    return os.getenv(env) or None  # empty (e.g. compose's ${VAR:-}) counts as unset
 
 
 class Settings(BaseModel):
@@ -61,13 +68,13 @@ class Settings(BaseModel):
         else:
             data = {}
 
-        # Environment variable overrides
-        if folder_id := os.getenv("DRIVE_FOLDER_ID"):
-            data.setdefault("google_drive", {})["shared_folder_id"] = folder_id
+        # Older setups set the folder in .env; it now only fills in when the app hasn't saved one.
+        if (folder := env_override("DRIVE_FOLDER_ID")) and not data.get("google_drive", {}).get("shared_folder_id"):
+            data.setdefault("google_drive", {})["shared_folder_id"] = folder
 
-        for key, env in ENV_OVERRIDES.items():
-            if (raw := os.getenv(env)) is not None:
-                data.setdefault("torrent", {})[key] = raw.lower() in ("1", "true", "yes") if key == "stream_to_drive" else int(raw)
+        for (section, key), env in ENV_OVERRIDES.items():
+            if (raw := env_override(env)) is not None:
+                data.setdefault(section, {})[key] = raw  # pydantic parses "true"/"1"/"2048"
 
         return cls(**data)
 

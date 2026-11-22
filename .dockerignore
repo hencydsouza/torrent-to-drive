@@ -1,0 +1,14 @@
+.git
+.github
+**/node_modules
+frontend/dist
+data
+config
+venv
+.env
+*.md
+!README.md
+tests
+**/__pycache__
+*.ipynb
+.ipynb_checkpoints

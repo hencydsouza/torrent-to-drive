@@ -6,7 +6,7 @@ from typing import Optional, Dict, List
 from backend.models import TorrentState
 from backend.database import get_db
 from backend.torrent import get_engine
-from backend.drive.client import get_drive_client, with_retry
+from backend.drive.client import file_md5, get_drive_client, with_retry
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -97,8 +97,11 @@ class UploadWorker:
         if remote_file['is_folder']:
             return False
 
-        # Compare size
+        # Same size and (when Drive reports one) same MD5 -> already there
         if remote_file['size'] == local_size:
+            if remote_file.get('md5') and remote_file['md5'] != await asyncio.to_thread(file_md5, file_path):
+                logger.info(f"File exists but checksum differs, re-uploading: {file_name}")
+                return False
             logger.info(f"File already exists, skipping: {file_name} ({local_size} bytes)")
             return True
 
@@ -276,6 +279,7 @@ class UploadWorker:
     def _count_done(engine, torrent_id: str, stats: Dict, path: Path):
         stats['bytes'] += path.stat().st_size
         engine.file_uploaded[str(path)] = path.stat().st_size
+        engine.file_verified.add(str(path))  # upload_file / _file_exists both checked the MD5
         engine.uploaded[torrent_id] = stats['bytes']
 
     async def _cleanup_local_files(self, path: Path):

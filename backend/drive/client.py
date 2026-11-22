@@ -11,6 +11,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 import asyncio
+import hashlib
+import json
 import pickle
 from backend.models import DriveFile
 from backend.config import settings
@@ -20,6 +22,22 @@ logger = logging.getLogger(__name__)
 
 # Scopes required for Google Drive access
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+FILE_FIELDS = "id, name, size, mimeType, md5Checksum, createdTime, webViewLink, webContentLink"
+FOLDER_MIME = "application/vnd.google-apps.folder"
+
+
+def to_drive_file(item: dict) -> DriveFile:
+    return DriveFile(
+        id=item["id"],
+        name=item["name"],
+        size=int(item.get("size", 0)),
+        mime_type=item["mimeType"],
+        md5_checksum=item.get("md5Checksum"),
+        created_time=datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00")),
+        web_view_link=item.get("webViewLink"),
+        web_content_link=item.get("webContentLink"),
+        is_folder=item["mimeType"] == FOLDER_MIME,
+    )
 
 
 class GoogleDriveClient:
@@ -43,10 +61,7 @@ class GoogleDriveClient:
             logger.info("Google Drive client authenticated with application default credentials")
             return
 
-        # Load existing credentials
-        if os.path.exists(token_file):
-            with open(token_file, "rb") as token:
-                self.credentials = pickle.load(token)
+        self.credentials = load_token(token_file)
 
         # Refresh or get new credentials
         if not self.credentials or not self.credentials.valid:
@@ -54,19 +69,9 @@ class GoogleDriveClient:
                 logger.info("Refreshing Google Drive credentials...")
                 self.credentials.refresh(Request())
             else:
-                if not os.path.exists(creds_file):
-                    raise FileNotFoundError(
-                        f"Credentials file not found: {creds_file}\n"
-                        "Please download from Google Cloud Console and place it at this location."
-                    )
-
-                if not interactive:
+                if not interactive or not os.path.exists(creds_file):
                     # Never block a request on an interactive login (no browser/stdin in Docker)
-                    raise RuntimeError(
-                        "Google Drive not authorized yet. Run once:\n"
-                        "  docker compose run --rm -p 8765:8765 torrent-to-drive python -m backend.drive.client\n"
-                        "(or locally: python -m backend.drive.client)"
-                    )
+                    raise RuntimeError("Google Drive is not connected. Sign in on the Settings page.")
 
                 logger.info("Starting OAuth2 flow for Google Drive...")
                 flow = InstalledAppFlow.from_client_secrets_file(creds_file, SCOPES)
@@ -83,14 +88,21 @@ class GoogleDriveClient:
                     ),
                 )
 
-            # Save credentials
-            os.makedirs(os.path.dirname(token_file), exist_ok=True)
-            with open(token_file, "wb") as token:
-                pickle.dump(self.credentials, token)
+            save_token(self.credentials, token_file)
 
         # Build service
         self.service = build("drive", "v3", credentials=self.credentials)
         logger.info("Google Drive client authenticated successfully")
+
+    async def account(self) -> Optional[str]:
+        """Signed-in user's email, if Google shares it with this scope."""
+        try:
+            about = await asyncio.to_thread(self.service.about().get(fields="user(emailAddress, displayName)").execute)
+            user = about.get("user", {})
+            return user.get("emailAddress") or user.get("displayName")
+        except Exception as e:
+            logger.debug(f"about.get failed: {e}")
+            return None
 
     async def list_files(self, folder_id: Optional[str] = None, page_size: int = 100,
                          all_pages: bool = False) -> List[DriveFile]:
@@ -112,7 +124,7 @@ class GoogleDriveClient:
                         q=query,
                         pageSize=page_size,
                         pageToken=token,
-                        fields="nextPageToken, files(id, name, size, mimeType, createdTime, webViewLink, webContentLink)",
+                        fields=f"nextPageToken, files({FILE_FIELDS})",
                         orderBy="createdTime desc",
                     )
                     .execute()
@@ -122,20 +134,7 @@ class GoogleDriveClient:
                 if not (all_pages and token):
                     break
 
-            files = []
-            for item in items:
-                files.append(
-                    DriveFile(
-                        id=item["id"],
-                        name=item["name"],
-                        size=int(item.get("size", 0)),
-                        mime_type=item["mimeType"],
-                        created_time=datetime.fromisoformat(item["createdTime"].replace("Z", "+00:00")),
-                        web_view_link=item.get("webViewLink"),
-                        web_content_link=item.get("webContentLink"),
-                        is_folder=item["mimeType"] == "application/vnd.google-apps.folder",
-                    )
-                )
+            files = [to_drive_file(item) for item in items]
 
             logger.info(f"Listed {len(files)} files from Drive folder {folder_id}")
             return files
@@ -148,7 +147,8 @@ class GoogleDriveClient:
         """name -> {id, size, mime_type, is_folder} for a folder; {} on listing errors."""
         try:
             return {
-                f.name: {"id": f.id, "size": f.size, "mime_type": f.mime_type, "is_folder": f.is_folder}
+                f.name: {"id": f.id, "size": f.size, "mime_type": f.mime_type, "is_folder": f.is_folder,
+                         "md5": f.md5_checksum}
                 for f in await self.list_files(folder_id=folder_id, page_size=1000, all_pages=True)
             }
         except Exception as e:
@@ -177,7 +177,7 @@ class GoogleDriveClient:
 
         file_metadata = {
             "name": name,
-            "mimeType": "application/vnd.google-apps.folder",
+            "mimeType": FOLDER_MIME,
             "parents": [parent_id],
         }
 
@@ -218,7 +218,7 @@ class GoogleDriveClient:
             # Own http per upload: httplib2 is not thread-safe, and this runs off the event loop.
             http = google_auth_httplib2.AuthorizedHttp(self.credentials, http=httplib2.Http())
             media = MediaFileUpload(str(file_path), resumable=resumable, chunksize=settings.google_drive.chunk_size)
-            request = self.service.files().create(body=file_metadata, media_body=media, fields="id")
+            request = self.service.files().create(body=file_metadata, media_body=media, fields="id, md5Checksum")
             response = None
             while response is None:
                 status, response = request.next_chunk(http=http)
@@ -229,7 +229,12 @@ class GoogleDriveClient:
         try:
             file = await asyncio.to_thread(upload_blocking)
             file_id = file.get("id")
-            logger.info(f"Uploaded file '{file_path.name}' to Drive with ID: {file_id}")
+            local_md5 = await asyncio.to_thread(file_md5, file_path)
+            if file.get("md5Checksum") != local_md5:
+                await self.delete_file(file_id)  # don't leave a corrupt copy that later runs would skip as "exists"
+                raise ValueError(f"Checksum mismatch after uploading '{file_path.name}' "
+                                 f"(local {local_md5}, Drive {file.get('md5Checksum')}); removed it from Drive")
+            logger.info(f"Uploaded and verified '{file_path.name}' (md5 {local_md5}), Drive ID: {file_id}")
             return file_id
 
         except HttpError as e:
@@ -259,21 +264,11 @@ class GoogleDriveClient:
                 self.service.files()
                 .get(
                     fileId=file_id,
-                    fields="id, name, size, mimeType, createdTime, webViewLink, webContentLink",
+                    fields=FILE_FIELDS,
                 )
                 .execute()
             )
-
-            return DriveFile(
-                id=file["id"],
-                name=file["name"],
-                size=int(file.get("size", 0)),
-                mime_type=file["mimeType"],
-                created_time=datetime.fromisoformat(file["createdTime"].replace("Z", "+00:00")),
-                web_view_link=file.get("webViewLink"),
-                web_content_link=file.get("webContentLink"),
-                is_folder=file["mimeType"] == "application/vnd.google-apps.folder",
-            )
+            return to_drive_file(file)
 
         except HttpError as e:
             logger.error(f"Error getting file metadata: {e}", exc_info=True)
@@ -296,8 +291,47 @@ async def with_retry(func, *args, **kwargs):
             delay *= 2
 
 
+def file_md5(path: Path) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        while chunk := f.read(8 * 1024 * 1024):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_token(token_file: str) -> Optional[Credentials]:
+    """JSON token (current format); falls back to the old pickle format and converts it."""
+    if not os.path.exists(token_file):
+        return None
+    try:
+        return Credentials.from_authorized_user_file(token_file, SCOPES)
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        with open(token_file, "rb") as f:
+            creds = pickle.load(f)  # legacy token written by older versions of this app
+        save_token(creds, token_file)
+        return creds
+
+
+def write_private(path: str, text: str):
+    """Write a secret file readable only by this user (token, OAuth client)."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+        f.write(text)
+    os.chmod(path, 0o600)  # O_CREAT's mode only applies to new files
+
+
+def save_token(creds: Credentials, token_file: str):
+    write_private(token_file, creds.to_json())
+
+
 # Global client instance
 _client: Optional[GoogleDriveClient] = None
+
+
+def reset_drive_client():
+    """Forget the cached client, e.g. after signing in or out."""
+    global _client
+    _client = None
 
 
 async def get_drive_client() -> GoogleDriveClient:

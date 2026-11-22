@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import Icon from '../ui/Icon';
-import FileProgressList from './FileProgressList';
+import TorrentDetailsPanel from './TorrentDetailsPanel';
 import { useUi } from '../../stores/ui';
 import IconButton from '../ui/IconButton';
 import { barPercent, describeState, isLive } from '../../lib/torrentState';
@@ -83,7 +83,7 @@ export default function TorrentRow({ torrent, progress, busy, onPause, onResume,
             className="row-toggle"
             aria-expanded={expanded}
             aria-controls={filesId}
-            title={expanded ? 'Hide files' : 'Show files'}
+            title={expanded ? 'Hide details' : 'Show files, pieces, peers and trackers'}
             onClick={() => toggleExpanded(torrent.id)}
           >
             <Icon name="chevron" className={expanded ? 'is-open' : undefined} />
@@ -108,7 +108,7 @@ export default function TorrentRow({ torrent, progress, busy, onPause, onResume,
     {expanded ? (
       <tr className="row-files" id={filesId}>
         <td colSpan={4}>
-          <FileProgressList torrentId={torrent.id} live={isLive(state)} />
+          <TorrentDetailsPanel torrent={torrent} live={isLive(state)} panelId={`detail-${torrent.id}`} />
         </td>
       </tr>
     ) : null}

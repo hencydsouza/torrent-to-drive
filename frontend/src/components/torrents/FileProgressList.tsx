@@ -8,7 +8,7 @@ const pct = (part: number, whole: number) => (whole ? Math.min(100, (part / whol
 
 function fileStatus(f: FileProgress) {
   if (!f.selected) return { label: 'Skipped', tone: 'neutral' };
-  if (f.uploaded >= f.size) return { label: 'On Drive', tone: 'success' };
+  if (f.uploaded >= f.size) return { label: f.verified ? 'On Drive · MD5 verified' : 'On Drive', tone: 'success' };
   if (f.uploaded > 0) return { label: `Uploading ${pct(f.uploaded, f.size).toFixed(0)}%`, tone: 'info' };
   if (f.downloaded >= f.size) return { label: 'Downloaded', tone: 'info' };
   if (f.downloaded > 0) return { label: `Downloading ${pct(f.downloaded, f.size).toFixed(0)}%`, tone: 'accent' };

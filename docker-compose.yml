@@ -1,24 +1,14 @@
 services:
   torrent-to-drive:
-    build: .
+    image: ghcr.io/hencydsouza/torrent-to-drive:latest
+    build: .  # `docker compose up --build` builds locally instead of pulling
     container_name: torrent-to-drive
     ports:
       - "8000:8000"
     volumes:
-      # Mount config for credentials
-      - ./config:/app/config:rw
-      # Mount data directory (downloads cleaned after upload)
-      - ./data:/app/data
-      # Optional: limit disk usage
-      # Uncomment to limit container disk to 50GB
-      # mem_limit: 1g
+      - ./config:/app/config  # OAuth client, Google token, settings.yaml
+      - ./data:/app/data      # downloads (deleted after upload) + torrents.db
     environment:
+      # Optional. Pick the folder on the Settings page instead; this is only used when none was saved there.
       - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID:-}
-      - PYTHONUNBUFFERED=1
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s

@@ -11,6 +11,7 @@ from backend.models import (
     TorrentMetadata,
     TorrentProgress,
     TorrentState,
+    TorrentDetails,
 )
 from backend.database import get_db
 from backend.torrent import get_engine, get_torrent_worker
@@ -173,7 +174,16 @@ async def get_file_progress(torrent_id: str):
         downloaded=f.size if downloaded_all and f.selected else 0,
         uploaded=f.size if torrent.state == TorrentState.UPLOADED and f.selected
         else engine.file_uploaded.get(str(root / f.path), 0),
+        verified=str(root / f.path) in engine.file_verified,
     ) for f in torrent.metadata.files]
+
+
+@router.get("/{torrent_id}/details", response_model=Optional[TorrentDetails])
+async def get_details(torrent_id: str):
+    """Piece map, peers and trackers while the torrent is active; null otherwise."""
+    if not await (await get_db()).get_torrent(torrent_id):
+        raise HTTPException(status_code=404, detail="Torrent not found")
+    return await (await get_engine()).details(torrent_id)
 
 
 @router.get("/{torrent_id}/progress", response_model=TorrentProgress)

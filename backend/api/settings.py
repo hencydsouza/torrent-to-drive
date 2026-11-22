@@ -7,7 +7,7 @@ import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend.config import ENV_OVERRIDES as ENV_KEYS, settings
+from backend.config import ENV_OVERRIDES, env_override, settings
 from backend.models import AppSettings
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ CONFIG_PATH = "./config/settings.yaml"
 EDITABLE = {
     "torrent": ["stream_to_drive", "stream_buffer_mb", "max_concurrent_downloads",
                 "max_connections", "download_rate_limit", "upload_rate_limit", "extra_trackers"],
-    "google_drive": ["chunk_size", "max_retries"],
+    "google_drive": ["shared_folder_id", "chunk_size", "max_retries"],
 }
 
 
@@ -33,6 +33,7 @@ class SettingsUpdate(BaseModel):
     chunk_size: Optional[int] = Field(None, ge=256 * 1024, le=1024 * 1024 * 1024)
     max_retries: Optional[int] = Field(None, ge=1, le=20)
     extra_trackers: Optional[list[str]] = Field(None, max_length=500)
+    shared_folder_id: Optional[str] = Field(None, pattern=r"^[\w-]{1,200}$")  # Drive folder ID or "root"
 
     @field_validator("extra_trackers")
     @classmethod
@@ -48,8 +49,7 @@ class SettingsUpdate(BaseModel):
 
 def _current() -> dict:
     out = {k: getattr(getattr(settings, sec), k) for sec, keys in EDITABLE.items() for k in keys}
-    out["drive_folder_id"] = settings.google_drive.shared_folder_id
-    out["env_locked"] = [env for env in ENV_KEYS.values() if os.getenv(env) is not None]
+    out["env_locked"] = [env for env in ENV_OVERRIDES.values() if env_override(env)]
     return out
 
 
@@ -63,9 +63,9 @@ async def update_settings(update: SettingsUpdate):
     changes = update.model_dump(exclude_none=True)
     if "chunk_size" in changes:  # Drive resumable chunks must be 256 KiB multiples
         changes["chunk_size"] = changes["chunk_size"] // (256 * 1024) * (256 * 1024)
-    locked = [k for k in changes if k in ENV_KEYS and os.getenv(ENV_KEYS[k]) is not None]
+    locked = [env for (_, key), env in ENV_OVERRIDES.items() if key in changes and env_override(env)]
     if locked:  # env wins on restart, so saving would silently revert
-        raise HTTPException(409, f"Set by environment variable, edit .env instead: {', '.join(ENV_KEYS[k] for k in locked)}")
+        raise HTTPException(409, f"Set by environment variable, edit .env instead: {', '.join(locked)}")
 
     data = {}
     if os.path.exists(CONFIG_PATH):

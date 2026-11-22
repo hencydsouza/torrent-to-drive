@@ -1,6 +1,12 @@
 import { useSettingsForm } from '../hooks/useSettingsForm';
 import { FIELDS, type FieldKey } from '../lib/settingsFields';
+import { useQuery } from '@tanstack/react-query';
 import PageHeader from './ui/PageHeader';
+import GoogleAccount from './settings/GoogleAccount';
+import FolderPicker from './settings/FolderPicker';
+import { storageAPI } from '../services/api';
+import { keys } from '../lib/queryClient';
+import { useUi } from '../stores/ui';
 import './SettingsPage.css';
 
 interface ToggleProps {
@@ -37,6 +43,16 @@ interface NumberRowProps {
   disabled?: boolean;
 }
 
+function useFolderName(id?: string) {
+  const { data } = useQuery({
+    queryKey: keys.driveFile(id ?? ''),
+    queryFn: () => storageAPI.getFile(id!),
+    enabled: !!id && id !== 'root',
+    retry: false,
+  });
+  return id === 'root' ? 'My Drive' : (data?.name ?? id);
+}
+
 function NumberRow({ name, label, hint, value, onChange, disabled }: NumberRowProps) {
   const f: { min: number; step: number; unit: string; zero?: string } = FIELDS[name];
   const unlimited = !!f.zero && Number(value) === 0;
@@ -65,6 +81,8 @@ function NumberRow({ name, label, hint, value, onChange, disabled }: NumberRowPr
 
 export default function SettingsPage() {
   const { draft, dirty, set, save, discard, status, loadStatus } = useSettingsForm();
+  const openPicker = useUi((s) => s.openPicker);
+  const folderName = useFolderName(draft?.shared_folder_id);
 
   if (!draft) {
     return (
@@ -81,8 +99,13 @@ export default function SettingsPage() {
     <main className="page page--narrow settings-page">
       <PageHeader
         title="Settings"
-        subtitle={<>Uploading to Drive folder <code>{draft.drive_folder_id || 'not set'}</code></>}
+        subtitle={<>Uploading to <strong>{folderName}</strong></>}
       />
+
+      <section className="settings-section" aria-labelledby="sec-google">
+        <h2 id="sec-google">Google account</h2>
+        <GoogleAccount />
+      </section>
 
       <section className="settings-section" aria-labelledby="sec-stream">
         <h2 id="sec-stream">Stream to Drive</h2>
@@ -151,9 +174,20 @@ export default function SettingsPage() {
 
       <section className="settings-section" aria-labelledby="sec-drive">
         <h2 id="sec-drive">Drive upload</h2>
+        <div className="setting-row">
+          <div className="setting-text">
+            <span className="setting-label">Upload folder</span>
+            <span className="setting-hint">
+              Each torrent gets its own folder inside <strong>{folderName}</strong>. Saved right away.
+            </span>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={openPicker}>Change folder</button>
+        </div>
         <NumberRow name="chunk_size" label="Upload chunk size" hint="Rounded down to a multiple of 0.25 MB, as Drive requires. Larger chunks mean fewer requests." value={draft.chunk_size} onChange={set} />
         <NumberRow name="max_retries" label="Retries per chunk" hint="Attempts before an upload is marked failed. Waits double after each try." value={draft.max_retries} onChange={set} />
       </section>
+
+      <FolderPicker />
 
       <footer className="save-bar" hidden={!dirty && status.kind === 'idle'}>
         <p className={`status ${status.kind}`} role="status" aria-live="polite">

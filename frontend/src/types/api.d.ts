@@ -112,6 +112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/torrents/{torrent_id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Details
+         * @description Piece map, peers and trackers while the torrent is active; null otherwise.
+         */
+        get: operations["get_details_api_torrents__torrent_id__details_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/torrents/{torrent_id}/progress": {
         parameters: {
             query?: never;
@@ -181,11 +201,31 @@ export interface paths {
         };
         /**
          * List Files
-         * @description List all files in the configured Google Drive folder
+         * @description List files in a Drive folder (default: the configured upload folder).
          */
         get: operations["list_files_api_storage_files_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Folder
+         * @description Create a folder, e.g. to pick as the upload folder.
+         */
+        post: operations["create_folder_api_storage_folders_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -201,7 +241,7 @@ export interface paths {
         };
         /**
          * Get File
-         * @description Get metadata for a specific file
+         * @description Get metadata for a specific file or folder.
          */
         get: operations["get_file_api_storage_files__file_id__get"];
         put?: never;
@@ -221,7 +261,7 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description Check if Google Drive connection is working
+         * @description Check if Google Drive connection is working.
          */
         get: operations["health_check_api_storage_health_get"];
         put?: never;
@@ -244,6 +284,91 @@ export interface paths {
         /** Update Settings */
         put: operations["update_settings_api_settings_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_auth_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/client": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload Client */
+        put: operations["upload_client_api_auth_client_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish */
+        post: operations["finish_api_auth_finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_auth_logout_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -348,13 +473,33 @@ export interface components {
              * @default []
              */
             extra_trackers: string[];
-            /** Drive Folder Id */
-            drive_folder_id?: string | null;
+            /** Shared Folder Id */
+            shared_folder_id: string;
             /**
              * Env Locked
              * @default []
              */
             env_locked: string[];
+        };
+        /** AuthStatus */
+        AuthStatus: {
+            /** Mode */
+            mode: string;
+            /** Has Client */
+            has_client: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Account */
+            account?: string | null;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** ClientUpload */
+        ClientUpload: {
+            /** Client Json */
+            client_json: string;
         };
         /** DriveFile */
         DriveFile: {
@@ -366,6 +511,8 @@ export interface components {
             size: number;
             /** Mime Type */
             mime_type: string;
+            /** Md5 Checksum */
+            md5_checksum?: string | null;
             /**
              * Created Time
              * Format: date-time
@@ -427,11 +574,43 @@ export interface components {
              * @default 0
              */
             uploaded: number;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+        };
+        /** FinishRequest */
+        FinishRequest: {
+            /** Url */
+            url: string;
+        };
+        /** FolderCreate */
+        FolderCreate: {
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** PeerInfo */
+        PeerInfo: {
+            /** Address */
+            address: string;
+            /** Client */
+            client: string;
+            /** Progress */
+            progress: number;
+            /** Download Rate */
+            download_rate: number;
+            /** Upload Rate */
+            upload_rate: number;
+            /** Seed */
+            seed: boolean;
         };
         /** ServerStats */
         ServerStats: {
@@ -486,6 +665,38 @@ export interface components {
             max_retries?: number | null;
             /** Extra Trackers */
             extra_trackers?: string[] | null;
+            /** Shared Folder Id */
+            shared_folder_id?: string | null;
+        };
+        /** TorrentDetails */
+        TorrentDetails: {
+            progress: components["schemas"]["TorrentProgress"];
+            /** Info Hash */
+            info_hash: string;
+            /** Save Path */
+            save_path: string;
+            /** Piece Size */
+            piece_size: number;
+            /** Pieces */
+            pieces: string;
+            /** Availability */
+            availability: number;
+            /** All Time Download */
+            all_time_download: number;
+            /** All Time Upload */
+            all_time_upload: number;
+            /** Wasted */
+            wasted: number;
+            /** Active Seconds */
+            active_seconds: number;
+            /** Sequential */
+            sequential: boolean;
+            /** Connections */
+            connections: number;
+            /** Peers */
+            peers: components["schemas"]["PeerInfo"][];
+            /** Trackers */
+            trackers: components["schemas"]["TrackerInfo"][];
         };
         /** TorrentDownloadRequest */
         TorrentDownloadRequest: {
@@ -598,6 +809,19 @@ export interface components {
          * @enum {string}
          */
         TorrentState: "fetching_metadata" | "metadata_ready" | "downloading" | "completed" | "uploading" | "uploaded" | "error" | "paused";
+        /** TrackerInfo */
+        TrackerInfo: {
+            /** Url */
+            url: string;
+            /** Tier */
+            tier: number;
+            /** Status */
+            status: string;
+            /** Message */
+            message?: string | null;
+            /** Peers */
+            peers?: number | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -843,6 +1067,37 @@ export interface operations {
             };
         };
     };
+    get_details_api_torrents__torrent_id__details_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                torrent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TorrentDetails"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_progress_api_torrents__torrent_id__progress_get: {
         parameters: {
             query?: never;
@@ -967,6 +1222,39 @@ export interface operations {
             };
         };
     };
+    create_folder_api_storage_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_file_api_storage_files__file_id__get: {
         parameters: {
             query?: never;
@@ -1067,6 +1355,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_auth_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+        };
+    };
+    upload_client_api_auth_client_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    finish_api_auth_finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
                 };
             };
         };

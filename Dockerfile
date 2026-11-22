@@ -1,54 +1,34 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libtorrent-rasterbar-dev \
-    python3-libtorrent \
-    build-essential \
-    git \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# ---- frontend: build static files, only dist/ goes into the final image ----
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
+WORKDIR /src
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
 
-# Install Node.js for frontend build
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements
+# ---- python deps: installed into a venv that is copied as one layer ----
+FROM python:3.11-slim AS deps
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN python -m venv /venv
 COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip /venv/bin/pip install -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Build frontend
-COPY frontend/ ./frontend/
-RUN cd frontend && npm install && npm run build
-
-# Copy application
+# ---- runtime ----
+FROM python:3.11-slim
+# libtorrent's wheel bundles OpenSSL/boost; nothing else from apt is needed
+ENV PATH=/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+RUN useradd --uid 1000 --create-home app
+WORKDIR /app
+COPY --from=deps /venv /venv
 COPY backend/ ./backend/
-COPY config/ ./config/
-COPY setup.sh start.sh ./
-
-# Make scripts executable
-RUN chmod +x setup.sh start.sh
-
-# Create data directories with size limit (optional: 20GB limit via docker run)
-RUN mkdir -p data/torrents data/uploads
-
-# Expose port
+COPY --from=frontend /src/dist ./frontend/dist
+# config/ (OAuth client, token, settings) and data/ (downloads) are volumes, never baked in
+RUN mkdir -p config data/torrents && chown -R app:app config data
+USER app
+VOLUME ["/app/config", "/app/data"]
 EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
-
-# Environment variables (can be overridden at runtime)
-ENV PYTHONUNBUFFERED=1
-ENV TORRENT_MAX_SIZE_GB=50
-
-# Run application
-CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)"
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
